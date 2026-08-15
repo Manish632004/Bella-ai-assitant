@@ -21,6 +21,7 @@ import {
   Pause,
   Square,
   RefreshCw,
+  PictureInPicture2,
   Settings as SettingsIcon
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
@@ -223,6 +224,7 @@ export default function App() {
   const [themeColor, setThemeColor] = useState<string>("charcoal");
   const [userCaption, setUserCaption] = useState<string>("");
   const [characterState, setCharacterState] = useState<"idle" | "thinking" | "talking">("idle");
+  const [isMiniMode, setIsMiniMode] = useState<boolean>(false);
 
   const detectEmotionFromText = (text: string): BellaEmotion => {
     const lower = text.toLowerCase();
@@ -260,6 +262,20 @@ export default function App() {
   const [showSettings, setShowSettings] = useState<boolean>(false);
   const showSettingsRef = useRef<boolean>(false);
   useEffect(() => { showSettingsRef.current = showSettings; }, [showSettings]);
+
+  // Automatically transition character into floating mini mode when another panel, projector, or app is active
+  useEffect(() => {
+    if (activeProjectorUrl || showMemoryDashboard || showSettings) {
+      setIsMiniMode(true);
+    }
+  }, [activeProjectorUrl, showMemoryDashboard, showSettings]);
+
+  // Notify native desktop wrapper when mini mode changes (Always-On-Top floating widget over Notion/Windows)
+  useEffect(() => {
+    if ((window as any).bella?.setMiniMode) {
+      (window as any).bella.setMiniMode(isMiniMode);
+    }
+  }, [isMiniMode]);
 
   // V2: Wake word detector instance (Web Speech API, lives for the app lifetime)
   const wakeDetectorRef = useRef<BellaWakeWordDetector | null>(null);
@@ -523,14 +539,16 @@ export default function App() {
       {/* Decorative grid pattern background */}
       <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.012)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.012)_1px,transparent_1px)] bg-[size:32px_32px] pointer-events-none opacity-40" />
 
-      {/* FULL VIEWPORT HOLOGRAPHIC STAGE: Bella materializes across the entire screen */}
-      <div className="absolute inset-0 z-0 pointer-events-none select-none">
+      {/* FULL VIEWPORT HOLOGRAPHIC STAGE: Bella materializes across the entire screen or as a floating mini avatar */}
+      <div className={`absolute inset-0 ${isMiniMode ? "z-50 pointer-events-none" : "z-0 pointer-events-none"} select-none`}>
         <BellaCoreVisualizer
           session={sessionRef.current}
           state={state}
           themeColor={themeColor}
           activeEmotion={activeEmotion}
           characterState={characterState}
+          isMiniMode={isMiniMode}
+          onToggleMiniMode={() => setIsMiniMode(!isMiniMode)}
         />
       </div>
 
@@ -548,6 +566,20 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-5">
+          {/* Float / Stage mode toggler button */}
+          <button
+            onClick={() => setIsMiniMode(!isMiniMode)}
+            className={`flex items-center gap-1.5 transition text-xs font-mono tracking-widest cursor-pointer ${
+              isMiniMode
+                ? "text-cyan-400 opacity-100 font-semibold"
+                : "opacity-25 hover:opacity-100 text-white"
+            }`}
+            title={isMiniMode ? "Expand to Full Stage" : "Float Mini Character"}
+          >
+            <PictureInPicture2 size={14} />
+            <span>{isMiniMode ? "EXPAND" : "FLOAT"}</span>
+          </button>
+
           {/* Faint utilities hidden in margin */}
           <button
             onClick={() => setShowGuide(!showGuide)}
@@ -581,7 +613,7 @@ export default function App() {
             <span>{isScreenSharing ? "SHARING" : "SHARE SCREEN"}</span>
           </button>
 
-          {/* V2: Settings toggler button â€” matches existing faint-to-hover header style */}
+          {/* V2: Settings toggler button — matches existing faint-to-hover header style */}
           <button
             onClick={() => setShowSettings(!showSettings)}
             className={`flex items-center gap-1.5 transition text-xs font-mono tracking-widest cursor-pointer ${

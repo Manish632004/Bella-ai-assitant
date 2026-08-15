@@ -1,4 +1,4 @@
-﻿/* ===========================================================================
+/* ===========================================================================
  * BELLA â€” Electron main process (Phase 1)
  * ---------------------------------------------------------------------------
  * Responsibilities in this phase:
@@ -16,7 +16,7 @@
 
 'use strict';
 
-const { app, BrowserWindow, Menu, shell, dialog } = require('electron');
+const { app, BrowserWindow, Menu, shell, dialog, ipcMain, screen } = require('electron');
 const path = require('path');
 const http = require('http');
 const { spawn } = require('child_process');
@@ -26,6 +26,33 @@ const fs = require('fs');
 const SERVER_PORT = 3000;
 const SERVER_ORIGIN = `http://localhost:${SERVER_PORT}`;
 const SERVER_READY_TIMEOUT_MS = 40_000;
+
+let previousBounds = { width: 1280, height: 800 };
+
+ipcMain.on('toggle-mini-mode', (_event, enabled) => {
+  if (!mainWindow) return;
+  try {
+    if (enabled) {
+      previousBounds = mainWindow.getBounds();
+      const primaryDisplay = screen.getPrimaryDisplay();
+      const { workArea } = primaryDisplay;
+      mainWindow.setMinimumSize(220, 220);
+      mainWindow.setAlwaysOnTop(true, 'screen-saver');
+      mainWindow.setBounds({
+        width: 320,
+        height: 320,
+        x: workArea.x + workArea.width - 340,
+        y: workArea.y + workArea.height - 350
+      }, true);
+    } else {
+      mainWindow.setAlwaysOnTop(false);
+      mainWindow.setMinimumSize(940, 600);
+      mainWindow.setBounds(previousBounds, true);
+    }
+  } catch (err) {
+    console.error('[Electron Mini Mode Error]:', err);
+  }
+});
 
 // In development we run from the repo root; when packaged the app files live in
 // resources/app (asar-unpacked handling is added in the packaging phase).
@@ -73,9 +100,29 @@ function startBackend() {
 
   // Use the Node runtime bundled with Electron (ELECTRON_RUN_AS_NODE) so the
   // machine does not need a separate Node install once packaged.
-  // Data (memories, settings, secrets, logs) must live in a writable per-user
-  // folder â€” the install dir under Program Files is read-only.
-  const dataDir = app.getPath('userData');
+  // In development, share the project root so web app and electron share the exact same memories.
+  const dataDir = app.isPackaged
+    ? app.getPath('userData')
+    : APP_ROOT;
+
+  // Seed memories and settings if running in packaged mode for the first time
+  if (app.isPackaged && fs.existsSync(APP_ROOT)) {
+    try {
+      fs.mkdirSync(dataDir, { recursive: true });
+      const rootMemories = path.join(APP_ROOT, 'memories.json');
+      const userMemories = path.join(dataDir, 'memories.json');
+      if (fs.existsSync(rootMemories) && !fs.existsSync(userMemories)) {
+        fs.copyFileSync(rootMemories, userMemories);
+      }
+      const rootSettings = path.join(APP_ROOT, 'settings.json');
+      const userSettings = path.join(dataDir, 'settings.json');
+      if (fs.existsSync(rootSettings) && !fs.existsSync(userSettings)) {
+        fs.copyFileSync(rootSettings, userSettings);
+      }
+    } catch (e) {
+      console.warn('[Electron Seed Sync Error]:', e);
+    }
+  }
 
   // Frozen Python desktop agent (bundled as an extraResource when packaged).
   // In development this file won't exist, so the backend falls back to running

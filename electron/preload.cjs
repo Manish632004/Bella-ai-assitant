@@ -1,4 +1,4 @@
-﻿/* ===========================================================================
+/* ===========================================================================
  * BELLA â€” Electron preload
  * ---------------------------------------------------------------------------
  * Runs in an isolated context and exposes a minimal, explicit API surface to
@@ -9,10 +9,11 @@
 
 'use strict';
 
-const { contextBridge } = require('electron');
+const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('bella', {
   isDesktop: true,
   platform: process.platform,
   version: process.versions.electron,
+  setMiniMode: (enabled) => ipcRenderer.send('toggle-mini-mode', enabled),
 });
