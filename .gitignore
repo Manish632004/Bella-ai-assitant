@@ -1,0 +1,15 @@
+node_modules/
+build/
+dist/
+release/
+agent_dist/
+agent_build/
+logs/
+memories.json
+metadata.json
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+
