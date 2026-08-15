@@ -1,17 +1,17 @@
-/* ===========================================================================
- * MYRAA — Electron main process (Phase 1)
+﻿/* ===========================================================================
+ * BELLA â€” Electron main process (Phase 1)
  * ---------------------------------------------------------------------------
  * Responsibilities in this phase:
  *   1. Enforce a single running instance.
  *   2. Launch the existing Node backend (server.ts, bundled to dist/server.cjs)
- *      silently as a child process — no console window, no browser tab.
+ *      silently as a child process â€” no console window, no browser tab.
  *   3. Show a splash window while the backend boots, then load the real UI
  *      (http://localhost:3000) into the main application window.
  *   4. Clean up the backend (and its child Python agent) on quit.
  *
  * Tray, window-state persistence, close-to-tray and notifications arrive in
  * Phase 2; installer/auto-update/PyInstaller in later phases. The backend and
- * AI logic are reused verbatim — nothing here reimplements chat/memory/voice.
+ * AI logic are reused verbatim â€” nothing here reimplements chat/memory/voice.
  * ========================================================================= */
 
 'use strict';
@@ -44,7 +44,7 @@ let splashWindow = null;
 let isQuitting = false;
 
 // ---------------------------------------------------------------------------
-// Single-instance guard — second launches focus the existing window instead of
+// Single-instance guard â€” second launches focus the existing window instead of
 // starting a second backend on the same port.
 // ---------------------------------------------------------------------------
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
@@ -74,26 +74,26 @@ function startBackend() {
   // Use the Node runtime bundled with Electron (ELECTRON_RUN_AS_NODE) so the
   // machine does not need a separate Node install once packaged.
   // Data (memories, settings, secrets, logs) must live in a writable per-user
-  // folder — the install dir under Program Files is read-only.
+  // folder â€” the install dir under Program Files is read-only.
   const dataDir = app.getPath('userData');
 
   // Frozen Python desktop agent (bundled as an extraResource when packaged).
   // In development this file won't exist, so the backend falls back to running
   // the agent from source with a local Python interpreter.
   const agentExe = app.isPackaged
-    ? path.join(process.resourcesPath, 'agent', 'myraa-agent.exe')
-    : path.join(APP_ROOT, 'agent_dist', 'myraa-agent', 'myraa-agent.exe');
+    ? path.join(process.resourcesPath, 'agent', 'bella-agent.exe')
+    : path.join(APP_ROOT, 'agent_dist', 'bella-agent', 'bella-agent.exe');
 
   const env = {
     ...process.env,
     NODE_ENV: 'production',
     ELECTRON_RUN_AS_NODE: '1',
-    MYRAA_LAUNCHED_BY: 'electron',
-    MYRAA_DATA_DIR: dataDir,
-    MYRAA_APP_ROOT: APP_ROOT,
+    BELLA_LAUNCHED_BY: 'electron',
+    BELLA_DATA_DIR: dataDir,
+    BELLA_APP_ROOT: APP_ROOT,
   };
   if (fs.existsSync(agentExe)) {
-    env.MYRAA_AGENT_EXE = agentExe;
+    env.BELLA_AGENT_EXE = agentExe;
   }
 
   serverProcess = spawn(process.execPath, [SERVER_ENTRY], {
@@ -108,8 +108,8 @@ function startBackend() {
   serverProcess.on('exit', (code, signal) => {
     if (!isQuitting) {
       dialog.showErrorBox(
-        'MYRAA backend stopped',
-        `The MYRAA backend process exited unexpectedly (code ${code}, signal ${signal}).`,
+        'BELLA backend stopped',
+        `The BELLA backend process exited unexpectedly (code ${code}, signal ${signal}).`,
       );
       app.quit();
     }
@@ -184,7 +184,7 @@ function createMainWindow() {
     show: false, // revealed on ready-to-show to avoid a white flash
     backgroundColor: '#0a0a0f',
     autoHideMenuBar: true,
-    title: 'MYRAA',
+    title: 'BELLA',
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -220,7 +220,7 @@ function createMainWindow() {
 // Bootstrap sequence
 // ---------------------------------------------------------------------------
 async function bootstrap() {
-  app.setAppUserModelId('com.myraa.desktop');
+  app.setAppUserModelId('com.bella.desktop');
   createSplashWindow();
 
   try {
@@ -230,7 +230,7 @@ async function bootstrap() {
   } catch (err) {
     if (splashWindow) splashWindow.close();
     dialog.showErrorBox(
-      'MYRAA failed to start',
+      'BELLA failed to start',
       `${err instanceof Error ? err.message : String(err)}`,
     );
     app.quit();

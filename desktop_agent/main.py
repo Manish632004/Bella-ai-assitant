@@ -1,8 +1,8 @@
-"""
-MYRAA Desktop Control Agent — FastAPI entrypoint.
+﻿"""
+BELLA Desktop Control Agent â€” FastAPI entrypoint.
 
 Single dispatch endpoint POST /execute { tool, args } -> { result } | { error }.
-MYRAA's Node bridge (server.ts) calls this over HTTP on 127.0.0.1:8765.
+BELLA's Node bridge (server.ts) calls this over HTTP on 127.0.0.1:8765.
 
 Run:
     uvicorn desktop_agent.main:app --host 127.0.0.1 --port 8765
@@ -31,7 +31,7 @@ logging.basicConfig(
     format="[%(asctime)s] [%(levelname)s] %(message)s",
     datefmt="%H:%M:%S",
 )
-log = logging.getLogger("myraa.desktop")
+log = logging.getLogger("bella.desktop")
 
 
 # Load all tool modules so their handlers register before the app starts.
@@ -41,7 +41,7 @@ log.info("Loaded %d desktop tools: %s", len(TOOLS), ", ".join(sorted(TOOLS)))
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    log.info("MYRAA Desktop Control Agent v%s starting up.", __version__)
+    log.info("BELLA Desktop Control Agent v%s starting up.", __version__)
     yield
     # Clean shutdown of the Playwright browser if it was started.
     try:
@@ -50,13 +50,13 @@ async def lifespan(app: FastAPI):
         shutdown_browser()
     except Exception as e:  # noqa: BLE001
         log.warning("Browser shutdown error: %s", e)
-    log.info("MYRAA Desktop Control Agent stopped.")
+    log.info("BELLA Desktop Control Agent stopped.")
 
 
 app = FastAPI(
-    title="MYRAA Desktop Control Agent",
+    title="BELLA Desktop Control Agent",
     version=__version__,
-    description="JARVIS-style desktop automation backend for MYRAA.",
+    description="JARVIS-style desktop automation backend for BELLA.",
     lifespan=lifespan,
 )
 
@@ -86,7 +86,7 @@ class ExecuteResponse(BaseModel):
 def health() -> Dict[str, Any]:
     return {
         "status": "ok",
-        "name": "MYRAA Desktop Control Agent",
+        "name": "BELLA Desktop Control Agent",
         "version": __version__,
         "tools": sorted(TOOLS.keys()),
         "tool_count": len(TOOLS),
@@ -143,7 +143,7 @@ def _short_args(args: Dict[str, Any]) -> str:
     for k, v in args.items():
         s = repr(v)
         if len(s) > 60:
-            s = s[:60] + "…"
+            s = s[:60] + "â€¦"
         parts.append(f"{k}={s}")
     return "{" + ", ".join(parts) + "}"
 
@@ -152,8 +152,8 @@ def main() -> None:
     """Allow `python -m desktop_agent.main` to launch uvicorn."""
     import uvicorn
 
-    host = os.environ.get("MYRAA_AGENT_HOST", "127.0.0.1")
-    port = int(os.environ.get("MYRAA_AGENT_PORT", "8765"))
+    host = os.environ.get("BELLA_AGENT_HOST", "127.0.0.1")
+    port = int(os.environ.get("BELLA_AGENT_PORT", "8765"))
     log.info("Launching uvicorn on %s:%d", host, port)
     uvicorn.run(
         "desktop_agent.main:app",

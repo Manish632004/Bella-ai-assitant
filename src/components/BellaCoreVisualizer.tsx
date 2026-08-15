@@ -1,8 +1,8 @@
-import React, { useEffect, useRef, useState } from "react";
-import { MyraaAudioSession, LiveState } from "../lib/audio";
+﻿import React, { useEffect, useRef, useState } from "react";
+import { BellaAudioSession, LiveState } from "../lib/audio";
 import { Sparkles } from "lucide-react";
 
-export type MyraaEmotion = 
+export type BellaEmotion = 
   | "idle" 
   | "happy" 
   | "excited" 
@@ -15,15 +15,15 @@ export type MyraaEmotion =
   | "embarrassed" 
   | "playful";
 
-interface MyraaCoreVisualizerProps {
-  session: MyraaAudioSession | null;
+interface BellaCoreVisualizerProps {
+  session: BellaAudioSession | null;
   state: LiveState;
   themeColor: string; // Violet, crimson, emerald, celestial, gold, rose, charcoal
-  activeEmotion?: MyraaEmotion;
+  activeEmotion?: BellaEmotion;
   characterState: "idle" | "thinking" | "talking";
 }
 
-export const MyraaCoreVisualizer: React.FC<MyraaCoreVisualizerProps> = ({
+export const BellaCoreVisualizer: React.FC<BellaCoreVisualizerProps> = ({
   session,
   state,
   themeColor,
@@ -40,7 +40,7 @@ export const MyraaCoreVisualizer: React.FC<MyraaCoreVisualizerProps> = ({
   const [hasError, setHasError] = useState<boolean>(false);
 
   const handleVideoError = (videoName: string) => {
-    console.warn(`[Myraa Web Video] Failed to load video source for: ${videoName}`);
+    console.warn(`[Bella Web Video] Failed to load video source for: ${videoName}`);
     setHasError(true);
   };
 
@@ -301,7 +301,7 @@ export const MyraaCoreVisualizer: React.FC<MyraaCoreVisualizerProps> = ({
 
       {/* 2. Character Videos state crossfade manager (Z-index 10) */}
       <div 
-        id="myraa-animated-presence"
+        id="bella-animated-presence"
         className="absolute z-10 w-full h-full flex items-center justify-center pointer-events-auto transition-all duration-700"
       >
         <div className="relative w-full max-w-4xl aspect-[16/9] flex items-center justify-center scale-[0.95] sm:scale-110 select-none pointer-events-none md:max-h-[72vh] max-h-[62vh]">
@@ -372,9 +372,9 @@ export const MyraaCoreVisualizer: React.FC<MyraaCoreVisualizerProps> = ({
                 Please place your character video assets inside the <code className="text-cyan-300 font-mono">/assets</code> directory of your workspace named exactly:
               </p>
               <div className="mt-3 space-y-1.5 text-left font-mono text-[10px] text-cyan-200 bg-white/5 px-4 py-2.5 rounded-xl border border-white/5">
-                <div>• idle.mp4 (State: Idle)</div>
-                <div>• thinking.mp4 (State: Thinking)</div>
-                <div>• talking.mp4 (State: Talking)</div>
+                <div>â€¢ idle.mp4 (State: Idle)</div>
+                <div>â€¢ thinking.mp4 (State: Thinking)</div>
+                <div>â€¢ talking.mp4 (State: Talking)</div>
               </div>
             </div>
           )}
@@ -383,7 +383,7 @@ export const MyraaCoreVisualizer: React.FC<MyraaCoreVisualizerProps> = ({
 
       {/* 3. Foreground Hover-Responsive Canvas for glowing particles (Holographic Overlay Z-index 20) */}
       <canvas
-        id="myraa-hologram-living-canvas"
+        id="bella-hologram-living-canvas"
         ref={canvasRef}
         className="absolute inset-0 w-full h-full pointer-events-none z-20"
       />

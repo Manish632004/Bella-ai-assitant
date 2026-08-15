@@ -1,4 +1,4 @@
-"""
+﻿"""
 Screenshot & screen-reading: capture, save, OCR, and read on-screen text.
 
   takeScreenshot    -> capture full screen, return metadata (+ small base64)
@@ -22,7 +22,7 @@ from typing import Any, Dict, Optional
 
 from .registry import ToolError, register
 
-SCREENSHOTS_DIR = Path(os.path.expanduser("~")) / "Pictures" / "MyraaScreenshots"
+SCREENSHOTS_DIR = Path(os.path.expanduser("~")) / "Pictures" / "BellaScreenshots"
 
 
 def _capture() -> "Any":
@@ -118,7 +118,7 @@ def _trim_ocr(text: str, max_chars: int = 1500) -> str:
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
     out = "\n".join(lines)
     if len(out) > max_chars:
-        out = out[:max_chars] + "…"
+        out = out[:max_chars] + "â€¦"
     return out
 
 

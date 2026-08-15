@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from "react";
-import { MyraaAudioSession, LiveState } from "./lib/audio";
-import { MyraaCoreVisualizer, MyraaEmotion } from "./components/MyraaCoreVisualizer";
+﻿import { useState, useEffect, useRef } from "react";
+import { BellaAudioSession, LiveState } from "./lib/audio";
+import { BellaCoreVisualizer, BellaEmotion } from "./components/BellaCoreVisualizer";
 import { BrowserAgent } from "./components/BrowserAgent";
 import { 
   Power, 
@@ -27,8 +27,8 @@ import { motion, AnimatePresence } from "motion/react";
 import { Memory, MemoryCategory } from "./lib/memoryTypes";
 import { MemoryDashboard } from "./components/MemoryDashboard";
 import { SettingsPanel } from "./components/SettingsPanel";
-import { MyraaSettings, DEFAULT_SETTINGS, loadSettings, saveSettings } from "./lib/settingsStore";
-import { MyraaWakeWordDetector } from "./lib/wakeWord";
+import { BellaSettings, DEFAULT_SETTINGS, loadSettings, saveSettings } from "./lib/settingsStore";
+import { BellaWakeWordDetector } from "./lib/wakeWord";
 
 export default function App() {
   const [state, setState] = useState<LiveState>("disconnected");
@@ -219,12 +219,12 @@ export default function App() {
     await startScreenSharing();
   };
 
-  const [activeEmotion, setActiveEmotion] = useState<MyraaEmotion>("idle");
+  const [activeEmotion, setActiveEmotion] = useState<BellaEmotion>("idle");
   const [themeColor, setThemeColor] = useState<string>("charcoal");
   const [userCaption, setUserCaption] = useState<string>("");
   const [characterState, setCharacterState] = useState<"idle" | "thinking" | "talking">("idle");
 
-  const detectEmotionFromText = (text: string): MyraaEmotion => {
+  const detectEmotionFromText = (text: string): BellaEmotion => {
     const lower = text.toLowerCase();
     if (lower.includes("haha") || lower.includes("lol") || lower.includes("funny") || lower.includes("joke") || lower.includes("hehe") || lower.includes("wink")) return "playful";
     if (lower.includes("happy") || lower.includes("harmony") || lower.includes("glad") || lower.includes("joy") || lower.includes("wonderful") || lower.includes("love") || lower.includes("smile")) return "happy";
@@ -243,7 +243,7 @@ export default function App() {
   const [showGuide, setShowGuide] = useState<boolean>(false);
   const [errorText, setErrorText] = useState<string | null>(null);
 
-  // Myraa Autopilot system controller state
+  // Bella Autopilot system controller state
   const [browserTrigger, setBrowserTrigger] = useState<{
     type: string;
     args: any;
@@ -251,25 +251,25 @@ export default function App() {
     callback: (res: any) => void;
   } | null>(null);
 
-  // Myraa recollections database core state
+  // Bella recollections database core state
   const [memories, setMemories] = useState<Memory[]>([]);
   const [showMemoryDashboard, setShowMemoryDashboard] = useState<boolean>(false);
 
   // V2: Settings + wake word state
-  const [settings, setSettings] = useState<MyraaSettings>(() => loadSettings());
+  const [settings, setSettings] = useState<BellaSettings>(() => loadSettings());
   const [showSettings, setShowSettings] = useState<boolean>(false);
   const showSettingsRef = useRef<boolean>(false);
   useEffect(() => { showSettingsRef.current = showSettings; }, [showSettings]);
 
   // V2: Wake word detector instance (Web Speech API, lives for the app lifetime)
-  const wakeDetectorRef = useRef<MyraaWakeWordDetector | null>(null);
+  const wakeDetectorRef = useRef<BellaWakeWordDetector | null>(null);
   // Ref indirection so the wake-word callback always calls the latest connect
   // handler, regardless of where it's declared in the component body.
   const connectHandlerRef = useRef<() => void>(() => {});
 
   // Initialize wake detector once on mount.
   useEffect(() => {
-    const det = new MyraaWakeWordDetector();
+    const det = new BellaWakeWordDetector();
     wakeDetectorRef.current = det;
     return () => {
       det.stop();
@@ -285,7 +285,7 @@ export default function App() {
         phrase: settings.wakePhrase,
         sensitivity: settings.sensitivity,
         onTriggered: () => {
-          // When wake word fires, stop detector and connect MYRAA.
+          // When wake word fires, stop detector and connect BELLA.
           det.stop();
           connectHandlerRef.current();
         },
@@ -296,12 +296,12 @@ export default function App() {
   }, [settings.wakeWordEnabled, settings.wakePhrase, settings.sensitivity, state]);
 
   // Handle settings changes: persist to localStorage + update state.
-  const handleSettingsChange = (patch: Partial<MyraaSettings>) => {
+  const handleSettingsChange = (patch: Partial<BellaSettings>) => {
     const next = saveSettings(patch);
     setSettings(next);
   };
 
-  const sessionRef = useRef<MyraaAudioSession | null>(null);
+  const sessionRef = useRef<BellaAudioSession | null>(null);
 
   // Fetch initial recollections from backend database
   useEffect(() => {
@@ -347,7 +347,7 @@ export default function App() {
 
   // Initialize the audio session handlers once on mount
   useEffect(() => {
-    sessionRef.current = new MyraaAudioSession({
+    sessionRef.current = new BellaAudioSession({
       onStateChange: (newState) => {
         setState(newState);
         if (newState === "disconnected") {
@@ -509,7 +509,7 @@ export default function App() {
 
   return (
     <div
-      id="myraa-holographic-desktop"
+      id="bella-holographic-desktop"
       className={`relative w-full h-screen overflow-hidden bg-[#020205] text-white ${getAmbientStyles()} theme-transition flex flex-col justify-between p-6 sm:p-10 select-none`}
     >
       {/* Ambient Background Gradients matching Frosted Glass theme */}
@@ -520,9 +520,9 @@ export default function App() {
       {/* Decorative grid pattern background */}
       <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.012)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.012)_1px,transparent_1px)] bg-[size:32px_32px] pointer-events-none opacity-40" />
 
-      {/* FULL VIEWPORT HOLOGRAPHIC STAGE: Myraa materializes across the entire screen */}
+      {/* FULL VIEWPORT HOLOGRAPHIC STAGE: Bella materializes across the entire screen */}
       <div className="absolute inset-0 z-0 pointer-events-none select-none">
-        <MyraaCoreVisualizer
+        <BellaCoreVisualizer
           session={sessionRef.current}
           state={state}
           themeColor={themeColor}
@@ -535,7 +535,7 @@ export default function App() {
       <header className="relative z-30 flex items-center justify-between w-full max-w-5xl mx-auto select-none">
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold tracking-[0.4em] text-white/50 uppercase font-sans">
-            Myraa
+            Bella
           </span>
           <div className={`w-1.5 h-1.5 rounded-full ${
             state === "listening" || state === "speaking" 
@@ -564,7 +564,7 @@ export default function App() {
             <span className="hidden sm:inline">RECALLS</span>
           </button>
 
-          {/* Real-time screen sharing toggler button inside Myraa glass style header */}
+          {/* Real-time screen sharing toggler button inside Bella glass style header */}
           <button 
             onClick={isScreenSharing ? stopScreenSharing : startScreenSharing}
             className={`flex items-center gap-1.5 transition text-xs font-mono tracking-widest cursor-pointer ${
@@ -572,13 +572,13 @@ export default function App() {
                 ? "text-cyan-400 opacity-100 font-semibold" 
                 : "opacity-25 hover:opacity-100 text-white"
             }`}
-            title="Share Screen with Myraa"
+            title="Share Screen with Bella"
           >
             <Monitor size={14} className={isScreenSharing && !isScreenSharingPaused ? "animate-pulse text-cyan-400" : ""} />
             <span>{isScreenSharing ? "SHARING" : "SHARE SCREEN"}</span>
           </button>
 
-          {/* V2: Settings toggler button — matches existing faint-to-hover header style */}
+          {/* V2: Settings toggler button â€” matches existing faint-to-hover header style */}
           <button
             onClick={() => setShowSettings(!showSettings)}
             className={`flex items-center gap-1.5 transition text-xs font-mono tracking-widest cursor-pointer ${
@@ -586,7 +586,7 @@ export default function App() {
                 ? "text-cyan-400 opacity-100 font-semibold"
                 : "opacity-25 hover:opacity-100 text-white"
             }`}
-            title="Myraa Configuration"
+            title="Bella Configuration"
           >
             <SettingsIcon size={14} className={showSettings ? "animate-spin [animation-duration:6s]" : ""} />
             <span>SETTINGS</span>
@@ -714,17 +714,17 @@ export default function App() {
                 </button>
               </div>
               <p className="text-xs text-slate-400 mb-4 font-mono leading-relaxed">
-                Myraa is equipped with dynamic visual modules and standard text browser projectors. Here are clever triggers to try speaking aloud:
+                Bella is equipped with dynamic visual modules and standard text browser projectors. Here are clever triggers to try speaking aloud:
               </p>
               <div className="space-y-2 text-xs font-serif italic text-indigo-300">
                 <div className="p-2.5 rounded-xl bg-white/5 border border-white/5 hover:bg-white/10 transition cursor-pointer font-sans normal-case text-slate-200">
-                  ⚡ &quot;Myraa, change atmosphere of your core to crimson&quot; <span className="text-[10px] font-mono text-indigo-400 block mt-0.5 font-medium">Shifts theme color background</span>
+                  âš¡ &quot;Bella, change atmosphere of your core to crimson&quot; <span className="text-[10px] font-mono text-indigo-400 block mt-0.5 font-medium">Shifts theme color background</span>
                 </div>
                 <div className="p-2.5 rounded-xl bg-white/5 border border-white/5 hover:bg-white/10 transition cursor-pointer font-sans normal-case text-slate-200">
-                  ⚡ &quot;Open youtube.com on my screen please&quot; <span className="text-[10px] font-mono text-indigo-400 block mt-0.5 font-medium">Invokes browser projector panel</span>
+                  âš¡ &quot;Open youtube.com on my screen please&quot; <span className="text-[10px] font-mono text-indigo-400 block mt-0.5 font-medium">Invokes browser projector panel</span>
                 </div>
                 <div className="p-2.5 rounded-xl bg-white/5 border border-white/5 hover:bg-white/10 transition cursor-pointer font-sans normal-case text-slate-200">
-                  ⚡ &quot;Tell me a witty joke and change background to gold&quot; <span className="text-[10px] font-mono text-indigo-400 block mt-0.5 font-medium">Combines tools & voice</span>
+                  âš¡ &quot;Tell me a witty joke and change background to gold&quot; <span className="text-[10px] font-mono text-indigo-400 block mt-0.5 font-medium">Combines tools & voice</span>
                 </div>
               </div>
             </motion.div>
@@ -798,7 +798,7 @@ export default function App() {
                 ? "bg-purple-500/90 hover:bg-purple-600 border border-purple-400/95 text-white shadow-[0_0_35px_rgba(168,85,247,0.4)] scale-105"
                 : "bg-amber-600 border border-amber-300 text-white animate-spin"
             }`}
-            title={state === "disconnected" ? "Awake Myraa" : "Sleep core"}
+            title={state === "disconnected" ? "Awake Bella" : "Sleep core"}
           >
             {state === "disconnected" ? (
               <Power className="opacity-80" size={24} />

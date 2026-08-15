@@ -1,9 +1,9 @@
-# -*- mode: python ; coding: utf-8 -*-
+﻿# -*- mode: python ; coding: utf-8 -*-
 """
-PyInstaller spec for the MYRAA Desktop Control Agent.
+PyInstaller spec for the BELLA Desktop Control Agent.
 
-Produces a self-contained onedir bundle (myraa-agent/myraa-agent.exe) with an
-embedded Python runtime — the target machine needs no Python installed.
+Produces a self-contained onedir bundle (bella-agent/bella-agent.exe) with an
+embedded Python runtime â€” the target machine needs no Python installed.
 
 Notes:
 - registry.load_all() imports the tool modules dynamically (importlib), so each
@@ -13,7 +13,7 @@ Notes:
 - Playwright is intentionally NOT bundled here: its ~300MB Chromium is only used
   by the optional desktopBrowser* tools, whose imports are lazy and degrade
   gracefully. Every other capability works without it.
-- console=False → the agent runs with no console window (silent background).
+- console=False â†’ the agent runs with no console window (silent background).
 """
 
 from PyInstaller.utils.hooks import collect_submodules
@@ -40,7 +40,7 @@ hiddenimports += [
     "desktop_agent.tools_startup",
 ]
 
-# Web stack — uvicorn pulls its loop/protocol/lifespan submodules dynamically.
+# Web stack â€” uvicorn pulls its loop/protocol/lifespan submodules dynamically.
 hiddenimports += collect_submodules("uvicorn")
 hiddenimports += ["anyio", "click", "h11", "fastapi", "starlette", "pydantic"]
 
@@ -83,7 +83,7 @@ a = Analysis(
     excludes=[
         "playwright",
         "tkinter",
-        # Headless server — no GUI toolkits. pyautogui's helper libs (mouseinfo,
+        # Headless server â€” no GUI toolkits. pyautogui's helper libs (mouseinfo,
         # pymsgbox) can pull in Qt bindings, and mixing PyQt5+PyQt6 aborts the
         # build. None are needed at runtime.
         "PyQt5",
@@ -124,7 +124,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="myraa-agent",
+    name="bella-agent",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -144,5 +144,5 @@ coll = COLLECT(
     strip=False,
     upx=False,
     upx_exclude=[],
-    name="myraa-agent",
+    name="bella-agent",
 )

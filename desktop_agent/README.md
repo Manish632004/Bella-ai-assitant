@@ -1,11 +1,11 @@
-# MYRAA Desktop Control Agent
+﻿# BELLA Desktop Control Agent
 
-A local Python FastAPI service that gives MYRAA **JARVIS-style desktop control** —
+A local Python FastAPI service that gives BELLA **JARVIS-style desktop control** â€”
 open apps, manage files, control volume, take screenshots, OCR the screen, automate a
 real Chromium browser, run code, read system stats, and more.
 
-> **This agent does NOT modify MYRAA's UI, personality, or chat system.** It is a pure
-> backend tool layer that MYRAA's existing Node bridge (`server.ts`) calls over HTTP.
+> **This agent does NOT modify BELLA's UI, personality, or chat system.** It is a pure
+> backend tool layer that BELLA's existing Node bridge (`server.ts`) calls over HTTP.
 
 ---
 
@@ -24,7 +24,7 @@ real Chromium browser, run code, read system stats, and more.
 
 ```bash
 # 1. Navigate to the project root
-cd C:\Users\MSI\Desktop\myraa-ai-assistant
+cd C:\Users\MSI\Desktop\bella-ai-assistant
 
 # 2. Install Python dependencies (use the full interpreter path if `python` shim is broken)
 "C:\Users\MSI\AppData\Local\Programs\Python\Python311\python.exe" -m pip install -r desktop_agent/requirements.txt
@@ -49,7 +49,7 @@ cd C:\Users\MSI\Desktop\myraa-ai-assistant
 "C:\Users\MSI\AppData\Local\Programs\Python\Python311\python.exe" -m uvicorn desktop_agent.main:app --host 127.0.0.1 --port 8765
 ```
 
-The agent binds to `127.0.0.1:8765`. Then start MYRAA normally with `npm run dev`.
+The agent binds to `127.0.0.1:8765`. Then start BELLA normally with `npm run dev`.
 
 ---
 
@@ -78,22 +78,22 @@ On error:
 
 ## Available Tools
 
-### 🖥️ Applications
+### ðŸ–¥ï¸ Applications
 | Tool | Description |
 |---|---|
 | `openApplication` | Open Notepad, Chrome, VS Code, Calculator, Explorer, Task Manager, Settings, etc. |
 | `closeApplication` | Close a running application by name |
 
-### 🌐 Websites & Search
+### ðŸŒ Websites & Search
 | Tool | Description |
 |---|---|
-| `openWebsite` | Open a named site (YouTube, Gmail, GitHub…) or arbitrary URL in the default browser |
+| `openWebsite` | Open a named site (YouTube, Gmail, GitHubâ€¦) or arbitrary URL in the default browser |
 | `searchWeb` | Search any engine (Google, YouTube, GitHub, DuckDuckGo, Bing) |
 | `searchYouTube` | Shortcut: search YouTube |
 | `searchGoogle` | Shortcut: search Google |
 | `searchGitHub` | Shortcut: search GitHub |
 
-### 📁 Files
+### ðŸ“ Files
 | Tool | Description |
 |---|---|
 | `createFile` | Create a text file with content |
@@ -105,7 +105,7 @@ On error:
 | `listFiles` | List files in a folder |
 | `searchFiles` | Find files by name/extension (e.g. "find my Python files") |
 
-### 🎛️ PC Control
+### ðŸŽ›ï¸ PC Control
 | Tool | Description |
 |---|---|
 | `volumeUp` | Increase volume |
@@ -115,7 +115,7 @@ On error:
 | `requestPowerAction` | **Step 1**: Request confirmation token for shutdown/restart/sleep/lock |
 | `executePowerAction` | **Step 2**: Execute the power action with a valid token |
 
-### 🪟 Window Management
+### ðŸªŸ Window Management
 | Tool | Description |
 |---|---|
 | `minimizeWindow` | Minimize active or named window |
@@ -123,7 +123,7 @@ On error:
 | `closeWindow` | Close active or named window |
 | `switchApplication` | Switch to a named window, or Alt+Tab cycle |
 
-### 📋 Clipboard
+### ðŸ“‹ Clipboard
 | Tool | Description |
 |---|---|
 | `copySelected` | Copy selected text (sends Ctrl+C, reads clipboard) |
@@ -131,15 +131,15 @@ On error:
 | `getClipboard` | Read current clipboard contents |
 | `clearClipboard` | Empty the clipboard |
 
-### 📸 Screenshot & Screen Reading
+### ðŸ“¸ Screenshot & Screen Reading
 | Tool | Description |
 |---|---|
 | `takeScreenshot` | Capture the full screen |
-| `saveScreenshot` | Save screenshot to Pictures/MyraaScreenshots |
+| `saveScreenshot` | Save screenshot to Pictures/BellaScreenshots |
 | `analyzeScreenshot` | Screenshot + OCR to extract visible text |
 | `readScreen` | Read the active window's title + visible text via OCR |
 
-### 🌐 Browser Automation (Playwright)
+### ðŸŒ Browser Automation (Playwright)
 | Tool | Description |
 |---|---|
 | `browserOpen` / `browserNavigate` | Open a URL in the automation browser |
@@ -152,7 +152,7 @@ On error:
 | `browserGoBack` / `browserGoForward` | Navigate history |
 | `browserScroll` | Scroll the page up or down |
 
-### 💻 Coding Assistance
+### ðŸ’» Coding Assistance
 | Tool | Description |
 |---|---|
 | `createPythonFile` | Write a .py file |
@@ -160,7 +160,7 @@ On error:
 | `createProjectFolder` | Scaffold a project folder with subfolders |
 | `runPythonScript` | Execute a Python script (captured output) |
 
-### 📊 System Information
+### ðŸ“Š System Information
 | Tool | Description |
 |---|---|
 | `systemInfo` | CPU, RAM, disk usage, uptime |
@@ -171,7 +171,7 @@ On error:
 
 ## Safety
 
-- **Power actions** (shutdown, restart, sleep, lock) require a **two-step confirmation token**: MYRAA must first call `requestPowerAction` (which issues a single-use, 60-second token), ask the user out loud to confirm, then call `executePowerAction` with the token. Without a valid token, the action is refused.
+- **Power actions** (shutdown, restart, sleep, lock) require a **two-step confirmation token**: BELLA must first call `requestPowerAction` (which issues a single-use, 60-second token), ask the user out loud to confirm, then call `executePowerAction` with the token. Without a valid token, the action is refused.
 - **File deletions** go to the Recycle Bin by default (`send2trash`).
 - **File operations** are scoped to safe folders (Desktop, Documents, Downloads, Pictures, Music, Videos, home, project root). Paths outside these roots are rejected.
 - **Python script execution** has a configurable timeout (default 30s).
@@ -181,17 +181,17 @@ On error:
 ## Architecture
 
 ```
-MYRAA voice chat (existing, untouched)
-        ↓
+BELLA voice chat (existing, untouched)
+        â†“
 Gemini Live API (existing)
-        ↓
-server.ts — functionCall routing
-        ↓
-HTTP POST → localhost:8765/execute
-        ↓
+        â†“
+server.ts â€” functionCall routing
+        â†“
+HTTP POST â†’ localhost:8765/execute
+        â†“
 Python FastAPI desktop_agent
-        ↓
+        â†“
 pyautogui / pywin32 / psutil / Playwright / pytesseract / etc.
-        ↓
+        â†“
 Windows Desktop
 ```

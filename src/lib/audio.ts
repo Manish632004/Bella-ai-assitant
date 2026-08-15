@@ -1,5 +1,5 @@
-/**
- * Audio handling utility for Myraa Live API Voice stream.
+﻿/**
+ * Audio handling utility for Bella Live API Voice stream.
  * Handles:
  * - 16kHz layout sampling for microphone stream.
  * - Raw Little Endian Int16 PCM translation.
@@ -59,7 +59,7 @@ function base64ToUint8Array(base64: string): Uint8Array {
   return bytes;
 }
 
-export class MyraaAudioSession {
+export class BellaAudioSession {
   private ws: WebSocket | null = null;
   
   // Audios contexts (separate to match exact required sample rates)
@@ -135,7 +135,7 @@ export class MyraaAudioSession {
       this.ws.binaryType = "blob";
 
       this.ws.onopen = async () => {
-        console.log("[Myraa] Connected to server side WS bridge");
+        console.log("[Bella] Connected to server side WS bridge");
         try {
           // Guard against early user disconnect during connection setup
           if (!this.isActivated) return;
@@ -236,7 +236,7 @@ export class MyraaAudioSession {
 
           // Handle server-side states
           if (data.type === "status") {
-            console.log("[Myraa WS Status]:", data.status);
+            console.log("[Bella WS Status]:", data.status);
             if (data.status === "connecting_gemini") {
               // Wait for Gemini Live connection
             } else if (data.status === "connected") {
@@ -252,14 +252,14 @@ export class MyraaAudioSession {
             this.playAudioPCMChunk(data.audio);
           }
 
-          // Handle interruption signal (e.g. user talked over Myraa)
+          // Handle interruption signal (e.g. user talked over Bella)
           if (data.type === "interrupted") {
             this.handleInterruption();
           }
 
           // Turn complete
           if (data.type === "turnComplete") {
-            // Once Myraa completes speaking, change visual state back to listening
+            // Once Bella completes speaking, change visual state back to listening
             setTimeout(() => {
               if (this.activeSources.length === 0 && this.currentState === "speaking") {
                 this.setState("listening");

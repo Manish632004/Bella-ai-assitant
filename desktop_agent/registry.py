@@ -1,5 +1,5 @@
-"""
-MYRAA Desktop Control Agent — Central tool registry.
+﻿"""
+BELLA Desktop Control Agent â€” Central tool registry.
 
 Each tool module registers handlers into a flat dict `TOOLS` mapping
 tool_name -> callable(args: dict) -> dict.
@@ -34,7 +34,7 @@ class State:
         # Confirmation tokens for dangerous (power) actions.
         # token -> {"action": <tool_name>, "expires": <epoch>}
         self.confirmations: Dict[str, Dict[str, Any]] = {}
-        # Playwright singletons — lazily initialized on first browser tool use.
+        # Playwright singletons â€” lazily initialized on first browser tool use.
         self.playwright = None
         self.browser = None
         self.context = None
@@ -71,7 +71,7 @@ def register(name: str):
     return deco
 
 
-# The set of all tool names MYRAA may route to this agent.
+# The set of all tool names BELLA may route to this agent.
 # Kept in sync with the functionDeclarations added in server.ts.
 DESKTOP_TOOL_NAMES = [
     # applications / websites / search
@@ -113,7 +113,7 @@ DESKTOP_TOOL_NAMES = [
     "saveScreenshot",
     "analyzeScreenshot",
     "readScreen",
-    # browser automation (Playwright — desktop-owned, separate from holographic UI)
+    # browser automation (Playwright â€” desktop-owned, separate from holographic UI)
     "desktopBrowserOpen",
     "desktopBrowserNavigate",
     "desktopBrowserOpenTab",

@@ -1,4 +1,4 @@
-"""
+﻿"""
 File management: create / read / rename / delete / move / open / search.
 
 Safety model:
@@ -82,7 +82,7 @@ def _ensure_safe(p: Path, allow_anywhere: bool = False) -> None:
         if real == root_real or real.startswith(root_real + os.sep):
             return
     raise ToolError(
-        f"Path '{p}' is outside MYRAA's safe folders (Desktop, Documents, "
+        f"Path '{p}' is outside BELLA's safe folders (Desktop, Documents, "
         f"Downloads, Pictures, Music, Videos, home, and the project folder). "
         f"Pass allow_anywhere=true only if you really mean it."
     )
@@ -116,7 +116,7 @@ def read_file(args: Dict[str, Any]) -> Dict[str, Any]:
     except UnicodeDecodeError:
         return {"result": f"(Binary file, {p.stat().st_size} bytes): {p}"}
     if len(text) > max_chars:
-        text = text[:max_chars] + f"\n…[truncated, {len(text) - max_chars} more chars]"
+        text = text[:max_chars] + f"\nâ€¦[truncated, {len(text) - max_chars} more chars]"
     return {"result": text, "path": str(p)}
 
 

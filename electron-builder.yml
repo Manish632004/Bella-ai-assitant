@@ -1,6 +1,6 @@
-appId: com.myraa.desktop
-productName: MYRAA
-copyright: Copyright © 2026 MYRAA
+﻿appId: com.bella.desktop
+productName: BELLA
+copyright: Copyright Â© 2026 BELLA
 
 directories:
   output: release
@@ -20,7 +20,7 @@ files:
 # The PyInstaller-frozen desktop agent (embeds its own Python runtime) is copied
 # verbatim into resources/agent, so the target machine needs no Python.
 extraResources:
-  - from: agent_dist/myraa-agent
+  - from: agent_dist/bella-agent
     to: agent
     filter: ["**/*"]
 
@@ -38,7 +38,7 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: MYRAA
+  shortcutName: BELLA
   artifactName: ${productName}-Setup-${version}.${ext}
 
 portable:

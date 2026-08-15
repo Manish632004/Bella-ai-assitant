@@ -1,9 +1,9 @@
-/**
- * MYRAA Wake Word Detector (V2).
+﻿/**
+ * BELLA Wake Word Detector (V2).
  *
  * Uses the browser-native Web Speech API (webkitSpeechRecognition) for
  * continuous, always-listening keyword detection. Zero dependencies, runs
- * entirely in the MYRAA browser tab.
+ * entirely in the BELLA browser tab.
  *
  * Design goals (per V2 spec):
  *   - Very low CPU: relies on the browser's native speech engine (no FFT loop).
@@ -13,9 +13,9 @@
  *   - Activation sound + state callback on detection.
  *
  * Public API:
- *   const det = new MyraaWakeWordDetector();
+ *   const det = new BellaWakeWordDetector();
  *   det.start({ phrase, sensitivity, onTriggered, onState });
- *   det.setPhrase("hey myraa");
+ *   det.setPhrase("hey bella");
  *   det.setSensitivity(60);
  *   det.stop();
  */
@@ -59,10 +59,10 @@ export interface WakeWordOptions {
   onState?: (state: WakeWordState) => void;
 }
 
-export class MyraaWakeWordDetector {
+export class BellaWakeWordDetector {
   private recognition: SpeechRecognitionLike | null = null;
   private ctor: SpeechRecognitionCtor | null;
-  private phrase = "hey myraa";
+  private phrase = "hey bella";
   private sensitivity = 60;
   private onTriggered: (() => void) | null = null;
   private onState: ((s: WakeWordState) => void) | null = null;
@@ -73,7 +73,7 @@ export class MyraaWakeWordDetector {
   private active = false;
   /** Guards against rapid double-fires of the same utterance. */
   private lastTrigger = 0;
-  /** Debounce window (ms) — derived from sensitivity. */
+  /** Debounce window (ms) â€” derived from sensitivity. */
   private debounceMs = 4000;
   /** Backoff for restart after repeated errors. */
   private restartTimer: ReturnType<typeof setTimeout> | null = null;
@@ -94,7 +94,7 @@ export class MyraaWakeWordDetector {
       this.setState("error");
       return false;
     }
-    this.phrase = (opts.phrase || "hey myraa").toLowerCase().trim();
+    this.phrase = (opts.phrase || "hey bella").toLowerCase().trim();
     this.sensitivity = opts.sensitivity ?? this.sensitivity;
     this.onTriggered = opts.onTriggered ?? null;
     this.onState = opts.onState ?? null;
@@ -119,7 +119,7 @@ export class MyraaWakeWordDetector {
 
   /** Change the wake phrase live without a full restart. */
   setPhrase(phrase: string): void {
-    this.phrase = (phrase || "hey myraa").toLowerCase().trim();
+    this.phrase = (phrase || "hey bella").toLowerCase().trim();
   }
 
   /** Change sensitivity live. */
@@ -163,7 +163,7 @@ export class MyraaWakeWordDetector {
 
       rec.onerror = (e: any) => {
         const err = e?.error || "unknown";
-        // "no-speech" / "aborted" are benign — just let onend restart.
+        // "no-speech" / "aborted" are benign â€” just let onend restart.
         if (err === "no-speech" || err === "aborted") return;
         this.consecutiveErrors++;
         this.setState("error");

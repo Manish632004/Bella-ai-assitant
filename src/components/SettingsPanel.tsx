@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+﻿import React, { useEffect, useState } from "react";
 import {
   Settings,
   X,
@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  MyraaSettings,
+  BellaSettings,
   DEFAULT_SETTINGS,
   loadSettings,
   saveSettings,
@@ -23,9 +23,9 @@ interface SettingsPanelProps {
   isOpen: boolean;
   onClose: () => void;
   /** Current settings (owned by App so wake-word state stays in sync). */
-  settings: MyraaSettings;
+  settings: BellaSettings;
   /** Persist a settings patch (also notifies App of changes). */
-  onChange: (patch: Partial<MyraaSettings>) => void;
+  onChange: (patch: Partial<BellaSettings>) => void;
   themeColor: string;
 }
 
@@ -150,7 +150,7 @@ export function SettingsPanel({ isOpen, onClose, settings, onChange, themeColor 
     <AnimatePresence>
       {isOpen && (
         <>
-          {/* Backdrop Overlay — identical to MemoryDashboard */}
+          {/* Backdrop Overlay â€” identical to MemoryDashboard */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -159,7 +159,7 @@ export function SettingsPanel({ isOpen, onClose, settings, onChange, themeColor 
             className="absolute inset-0 bg-black/60 z-40 backdrop-blur-sm"
           />
 
-          {/* Slide-over Container — identical shell to MemoryDashboard */}
+          {/* Slide-over Container â€” identical shell to MemoryDashboard */}
           <motion.div
             initial={{ x: "100%" }}
             animate={{ x: 0 }}
@@ -175,7 +175,7 @@ export function SettingsPanel({ isOpen, onClose, settings, onChange, themeColor 
                 </div>
                 <div>
                   <h3 className="font-display font-medium text-lg tracking-tight text-white flex items-center gap-2">
-                    Myraa Configuration
+                    Bella Configuration
                     <Sparkles size={14} className="text-cyan-400" />
                   </h3>
                   <p className="text-[10px] font-mono uppercase tracking-widest text-slate-400 mt-0.5">
@@ -191,7 +191,7 @@ export function SettingsPanel({ isOpen, onClose, settings, onChange, themeColor 
               </button>
             </div>
 
-            {/* Tab selector row — mirrors MemoryDashboard pill style */}
+            {/* Tab selector row â€” mirrors MemoryDashboard pill style */}
             <div className="px-6 py-4 border-b border-white/5 flex items-center gap-2 overflow-x-auto">
               {tabs.map((t) => {
                 const Icon = t.icon;
@@ -224,7 +224,7 @@ export function SettingsPanel({ isOpen, onClose, settings, onChange, themeColor 
 
                   <ToggleRow
                     label="LAUNCH AT STARTUP"
-                    description="Start Myraa silently when Windows logs in"
+                    description="Start Bella silently when Windows logs in"
                     checked={settings.autoStart}
                     onChange={(v) => {
                       onChange({ autoStart: v });
@@ -249,7 +249,7 @@ export function SettingsPanel({ isOpen, onClose, settings, onChange, themeColor 
                     <div className="mt-2 p-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 flex items-center gap-2">
                       <Check size={14} className="text-emerald-400 shrink-0" />
                       <span className="text-[10px] font-mono text-emerald-300/80">
-                        Myraa will auto-launch on next Windows login.
+                        Bella will auto-launch on next Windows login.
                       </span>
                     </div>
                   )}
@@ -278,11 +278,11 @@ export function SettingsPanel({ isOpen, onClose, settings, onChange, themeColor 
                       type="text"
                       value={settings.wakePhrase}
                       onChange={(e) => onChange({ wakePhrase: e.target.value })}
-                      placeholder="hey myraa"
+                      placeholder="hey bella"
                       className="w-full px-3 py-2 rounded-xl border border-white/10 bg-white/5 text-sm text-white font-mono focus:outline-none focus:border-cyan-400/50 transition"
                     />
                     <span className="text-[8px] text-slate-500 uppercase font-mono">
-                      Say this phrase to activate Myraa
+                      Say this phrase to activate Bella
                     </span>
                   </div>
 
@@ -370,14 +370,14 @@ export function SettingsPanel({ isOpen, onClose, settings, onChange, themeColor 
                       <Volume2 size={12} /> Capabilities
                     </div>
                     <div className="grid grid-cols-2 gap-1.5 text-[10px] font-mono text-slate-300">
-                      <span>✓ App control</span>
-                      <span>✓ Browser</span>
-                      <span>✓ Volume</span>
-                      <span>✓ Brightness</span>
-                      <span>✓ Power</span>
-                      <span>✓ Files</span>
-                      <span>✓ Screenshot</span>
-                      <span>✓ Clipboard</span>
+                      <span>âœ“ App control</span>
+                      <span>âœ“ Browser</span>
+                      <span>âœ“ Volume</span>
+                      <span>âœ“ Brightness</span>
+                      <span>âœ“ Power</span>
+                      <span>âœ“ Files</span>
+                      <span>âœ“ Screenshot</span>
+                      <span>âœ“ Clipboard</span>
                     </div>
                   </div>
                 </div>
@@ -387,13 +387,13 @@ export function SettingsPanel({ isOpen, onClose, settings, onChange, themeColor 
               {activeTab === "about" && (
                 <div className="space-y-4">
                   <div className="text-[10px] font-mono uppercase tracking-widest text-slate-500">
-                    About Myraa
+                    About Bella
                   </div>
 
                   <div className="p-4 rounded-xl border border-white/5 bg-white/5 space-y-3">
                     <div className="flex items-center gap-2">
                       <Info size={14} className="text-cyan-400" />
-                      <span className="text-sm font-display text-white">MYRAA AI Assistant</span>
+                      <span className="text-sm font-display text-white">BELLA AI Assistant</span>
                     </div>
                     <div className="space-y-1.5 text-[10px] font-mono text-slate-400">
                       <div className="flex justify-between">
@@ -426,13 +426,13 @@ export function SettingsPanel({ isOpen, onClose, settings, onChange, themeColor 
               )}
             </div>
 
-            {/* Footer status bar — mirrors MemoryDashboard */}
+            {/* Footer status bar â€” mirrors MemoryDashboard */}
             <div className="px-6 py-3 border-t border-white/5 bg-white/5 flex items-center justify-between">
               <span className="text-[9px] font-mono uppercase tracking-widest text-slate-500">
                 Preferences auto-save
               </span>
               <span className="text-[9px] font-mono uppercase tracking-widest text-slate-500">
-                Myraa V2
+                Bella V2
               </span>
             </div>
           </motion.div>

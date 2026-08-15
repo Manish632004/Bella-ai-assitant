@@ -1,7 +1,7 @@
-/**
- * ApiKeyGate — first-run onboarding.
+﻿/**
+ * ApiKeyGate â€” first-run onboarding.
  *
- * MYRAA ships without any API key. On launch we ask the backend whether a key
+ * BELLA ships without any API key. On launch we ask the backend whether a key
  * is configured (GET /api/config). If not, this full-screen overlay blocks the
  * app until the user pastes their own Google Gemini key, which the backend
  * validates with a live test call and stores in their per-user data folder.
@@ -29,7 +29,7 @@ export function ApiKeyGate({ children }: { children: ReactNode }) {
         if (cancelled) return;
         setPhase(data.hasApiKey ? "ready" : "needsKey");
       } catch {
-        // Backend not up yet — assume onboarding needed rather than hard-fail.
+        // Backend not up yet â€” assume onboarding needed rather than hard-fail.
         if (!cancelled) setPhase("needsKey");
       }
     })();
@@ -72,7 +72,7 @@ export function ApiKeyGate({ children }: { children: ReactNode }) {
       {phase === "checking" ? (
         <div className="flex flex-col items-center gap-4 text-white/60">
           <Loader2 className="h-7 w-7 animate-spin" />
-          <span className="text-sm tracking-wide">Starting MYRAA…</span>
+          <span className="text-sm tracking-wide">Starting BELLAâ€¦</span>
         </div>
       ) : (
         <form
@@ -83,10 +83,10 @@ export function ApiKeyGate({ children }: { children: ReactNode }) {
             <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500/30 to-cyan-500/20 ring-1 ring-white/10">
               <KeyRound className="h-6 w-6 text-indigo-200" />
             </div>
-            <h1 className="text-xl font-semibold tracking-tight">Welcome to MYRAA</h1>
+            <h1 className="text-xl font-semibold tracking-tight">Welcome to BELLA</h1>
             <p className="mt-2 text-sm leading-relaxed text-white/55">
-              MYRAA runs on your own Google Gemini API key. Paste it below to get
-              started — it stays on this computer and is never shared.
+              BELLA runs on your own Google Gemini API key. Paste it below to get
+              started â€” it stays on this computer and is never shared.
             </p>
           </div>
 
@@ -98,7 +98,7 @@ export function ApiKeyGate({ children }: { children: ReactNode }) {
             autoFocus
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            placeholder="AIza…"
+            placeholder="AIzaâ€¦"
             spellCheck={false}
             className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white outline-none transition focus:border-indigo-400/60 focus:ring-2 focus:ring-indigo-500/20"
           />
@@ -116,7 +116,7 @@ export function ApiKeyGate({ children }: { children: ReactNode }) {
           >
             {submitting ? (
               <>
-                <Loader2 className="h-4 w-4 animate-spin" /> Verifying…
+                <Loader2 className="h-4 w-4 animate-spin" /> Verifyingâ€¦
               </>
             ) : (
               <>Continue</>

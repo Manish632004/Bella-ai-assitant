@@ -1,4 +1,4 @@
-import express from "express";
+﻿import express from "express";
 import { spawn } from "child_process";
 import http from "http";
 import path from "path";
@@ -24,7 +24,7 @@ import {
 dotenv.config();
 
 // ---------------------------------------------------------------------------
-// MYRAA V2 — Logging (Feature 7).
+// BELLA V2 â€” Logging (Feature 7).
 // Appends timestamped lines to logs/{commands,startup,errors}.log.
 // Never throws; logging failures are swallowed so they can't break the app.
 // ---------------------------------------------------------------------------
@@ -44,7 +44,7 @@ const logStartup = (m: string) => appendLog("startup.log", m);
 const logError = (m: string) => appendLog("errors.log", m);
 
 // ---------------------------------------------------------------------------
-// MYRAA Desktop Control Agent — HTTP bridge to the Python FastAPI backend.
+// BELLA Desktop Control Agent â€” HTTP bridge to the Python FastAPI backend.
 // ---------------------------------------------------------------------------
 const DESKTOP_AGENT_URL = process.env.DESKTOP_AGENT_URL || "http://127.0.0.1:8765";
 const DESKTOP_AGENT_TIMEOUT = 25_000; // ms
@@ -69,7 +69,7 @@ const DESKTOP_TOOLS: ReadonlySet<string> = new Set([
   "copySelected", "pasteClipboard", "getClipboard", "clearClipboard",
   // screenshot / screen reading
   "takeScreenshot", "saveScreenshot", "analyzeScreenshot", "readScreen",
-  // browser automation (Playwright — desktop-owned, separate from holographic UI)
+  // browser automation (Playwright â€” desktop-owned, separate from holographic UI)
   "desktopBrowserOpen", "desktopBrowserNavigate", "desktopBrowserOpenTab",
   "desktopBrowserCloseTab", "desktopBrowserSearch", "desktopBrowserClick",
   "desktopBrowserType", "desktopBrowserFillForm", "desktopBrowserGoBack",
@@ -98,18 +98,18 @@ let desktopAgentVerified = false;
  * Auto-spawn the Python desktop agent as a detached child process if it is not
  * already listening. Looks for the project's bundled Python interpreter first,
  * falling back to `python` / `python3` on PATH. Runs detached so it survives
- * even if MYRAA's node process is killed.
+ * even if BELLA's node process is killed.
  */
 function spawnDesktopAgent(): void {
   const agentEnv = {
     ...process.env,
-    MYRAA_AGENT_HOST: "127.0.0.1",
-    MYRAA_AGENT_PORT: "8765",
+    BELLA_AGENT_HOST: "127.0.0.1",
+    BELLA_AGENT_PORT: "8765",
   };
 
   // Preferred path (packaged app): a PyInstaller-frozen agent exe that embeds
-  // its own Python runtime. Set by the Electron main process via MYRAA_AGENT_EXE.
-  const frozenExe = process.env.MYRAA_AGENT_EXE;
+  // its own Python runtime. Set by the Electron main process via BELLA_AGENT_EXE.
+  const frozenExe = process.env.BELLA_AGENT_EXE;
   if (frozenExe && fs.existsSync(frozenExe)) {
     try {
       const child = spawn(frozenExe, [], {
@@ -131,7 +131,7 @@ function spawnDesktopAgent(): void {
 
   // Development fallback: run the agent from source using a local Python.
   const candidates = [
-    process.env.MYRAA_PYTHON,
+    process.env.BELLA_PYTHON,
     "C:\\Users\\MSI\\AppData\\Local\\Programs\\Python\\Python311\\python.exe",
     "python",
     "python3",
@@ -146,7 +146,7 @@ function spawnDesktopAgent(): void {
   });
   if (!py) {
     console.warn("[Desktop Agent] No frozen agent and no Python interpreter found; desktop control unavailable.");
-    logError("AGENT_SPAWN_NO_RUNTIME: neither MYRAA_AGENT_EXE nor Python available");
+    logError("AGENT_SPAWN_NO_RUNTIME: neither BELLA_AGENT_EXE nor Python available");
     return;
   }
   try {
@@ -187,7 +187,7 @@ async function ensureDesktopAgent(): Promise<void> {
   if (desktopAgentVerified) return;
   if (await isDesktopAgentAlive()) {
     desktopAgentVerified = true;
-    console.log("[Desktop Agent] Already running — 52 tools available.");
+    console.log("[Desktop Agent] Already running â€” 52 tools available.");
     return;
   }
   console.log("[Desktop Agent] Not detected. Auto-starting...");
@@ -196,7 +196,7 @@ async function ensureDesktopAgent(): Promise<void> {
     await new Promise((r) => setTimeout(r, 1000));
     if (await isDesktopAgentAlive()) {
       desktopAgentVerified = true;
-      console.log(`[Desktop Agent] Online after ${i}s — 52 tools available.`);
+      console.log(`[Desktop Agent] Online after ${i}s â€” 52 tools available.`);
       return;
     }
   }
@@ -292,7 +292,7 @@ async function startServer() {
   });
 
   // ---------------------------------------------------------------------------
-  // V2: Settings API — mirrors the memory persistence pattern.
+  // V2: Settings API â€” mirrors the memory persistence pattern.
   // Reads/writes settings.json so the Python agent can also check auto-start.
   // ---------------------------------------------------------------------------
   const SETTINGS_FILE = dataFile("settings.json");
@@ -302,7 +302,7 @@ async function startServer() {
       if (fs.existsSync(SETTINGS_FILE)) {
         return JSON.parse(fs.readFileSync(SETTINGS_FILE, "utf-8"));
       }
-    } catch { /* corrupt file — return defaults */ }
+    } catch { /* corrupt file â€” return defaults */ }
     return {};
   }
 
@@ -346,7 +346,7 @@ async function startServer() {
   // ---------------------------------------------------------------------------
   // Config / API-key onboarding.
   // The Gemini key is never shipped; each user supplies their own on first run.
-  // GET reports only whether a key exists — the key itself is never returned.
+  // GET reports only whether a key exists â€” the key itself is never returned.
   // ---------------------------------------------------------------------------
   app.get("/api/config", (_req, res) => {
     res.json({ hasApiKey: hasGeminiApiKey() });
@@ -358,7 +358,7 @@ async function startServer() {
       if (!key) {
         return res.status(400).json({ error: "API key is required." });
       }
-      // Validate the key by listing models — this checks authentication only,
+      // Validate the key by listing models â€” this checks authentication only,
       // without depending on any single model's availability or per-model
       // quota (a 429 on one model must NOT read as an invalid key). We only
       // reject on genuine auth failures; transient/network errors still save,
@@ -388,7 +388,7 @@ async function startServer() {
     }
   });
 
-  // V2: Agent health proxy (for the Settings panel — avoids direct :8765 call
+  // V2: Agent health proxy (for the Settings panel â€” avoids direct :8765 call
   // which may fail due to CORS when served on a different origin).
   app.get("/api/agent-health", async (_req, res) => {
     try {
@@ -407,7 +407,7 @@ async function startServer() {
     }
   });
 
-  // V2: Logs API — returns recent log entries (last 100 lines) for display.
+  // V2: Logs API â€” returns recent log entries (last 100 lines) for display.
   app.get("/api/logs/:file", async (req, res) => {
     try {
       const fileName = String(req.params.file);
@@ -523,14 +523,14 @@ async function startServer() {
     try {
       const urlParam = req.query.url as string;
       if (!urlParam) {
-        return res.status(400).send("Myraa Web Proxy Error: Missing target 'url' parameter");
+        return res.status(400).send("Bella Web Proxy Error: Missing target 'url' parameter");
       }
 
       targetUrl = urlParam.trim();
       
       // Prevent relative paths from requesting on same-origin
       if (targetUrl.startsWith("/")) {
-        return res.status(400).send(`Myraa Web Proxy Error: Relative paths are not supported directly (${targetUrl}).`);
+        return res.status(400).send(`Bella Web Proxy Error: Relative paths are not supported directly (${targetUrl}).`);
       }
 
       // Check protocol and hostname format
@@ -543,7 +543,7 @@ async function startServer() {
           throw new Error("Missing or invalid domain name extension (e.g. .com, .org, .net).");
         }
       } catch (err: any) {
-        return res.status(400).send(`Myraa Web Proxy Error: Invalid URL specified: "${urlParam}". Make sure you enter a valid domain name.`);
+        return res.status(400).send(`Bella Web Proxy Error: Invalid URL specified: "${urlParam}". Make sure you enter a valid domain name.`);
       }
 
       console.log(`[Web Proxy] Routing connection through proxy: ${targetUrl}`);
@@ -558,11 +558,11 @@ async function startServer() {
         });
       } catch (fetchErr: any) {
         console.warn(`[Web Proxy Failed Fetch] Target: ${targetUrl} Error:`, fetchErr.message);
-        return res.status(502).send(`Myraa Web Proxy Error: Unable to fetch the website "${targetUrl}". The site might be offline, or the URL address is spelled incorrectly. Details: ${fetchErr.message}`);
+        return res.status(502).send(`Bella Web Proxy Error: Unable to fetch the website "${targetUrl}". The site might be offline, or the URL address is spelled incorrectly. Details: ${fetchErr.message}`);
       }
 
       if (!response.ok) {
-        return res.status(response.status).send(`Myraa Web Proxy Error: Failed loading remote website. Server returned status: ${response.status} (${response.statusText})`);
+        return res.status(response.status).send(`Bella Web Proxy Error: Failed loading remote website. Server returned status: ${response.status} (${response.statusText})`);
       }
 
       const contentType = response.headers.get("content-type") || "";
@@ -624,8 +624,8 @@ async function startServer() {
             }, true);
 
             // Neutralize parent context locks (frame-busters)
-            window.alert = function(msg) { console.log("[Myraa Browser alert bypassed]:", msg); };
-            window.confirm = function(msg) { console.log("[Myraa Browser confirm bypassed]:", msg); return true; };
+            window.alert = function(msg) { console.log("[Bella Browser alert bypassed]:", msg); };
+            window.confirm = function(msg) { console.log("[Bella Browser confirm bypassed]:", msg); return true; };
             window.open = function(url) { window.parent.postMessage({ type: 'NAVIGATE', url: url }, '*'); return null; };
           })();
         </script>
@@ -642,7 +642,7 @@ async function startServer() {
 
       // Neutralize security headers to allow displaying in an iframe on same-origin
       res.setHeader("Content-Type", "text/html");
-      res.setHeader("X-Myraa-Proxied", "true");
+      res.setHeader("X-Bella-Proxied", "true");
       res.removeHeader("X-Frame-Options");
       res.removeHeader("Content-Security-Policy");
       res.removeHeader("content-security-policy");
@@ -651,7 +651,7 @@ async function startServer() {
       res.status(200).send(htmlContents);
     } catch (e: any) {
       console.warn("[Web Proxy Exception] Handled internal error:", e.message);
-      res.status(500).send(`Myraa Web Proxy Error: Internal error occurred proxying URL "${targetUrl || "unknown"}". Details: ${e.message}`);
+      res.status(500).send(`Bella Web Proxy Error: Internal error occurred proxying URL "${targetUrl || "unknown"}". Details: ${e.message}`);
     }
   });
 
@@ -761,7 +761,7 @@ async function startServer() {
       console.error("No Gemini API key configured.");
       clientWs.send(JSON.stringify({
         type: "error",
-        error: "NO_API_KEY: Add your Gemini API key in Settings to start talking to MYRAA."
+        error: "NO_API_KEY: Add your Gemini API key in Settings to start talking to BELLA."
       }));
       clientWs.close();
       return;
@@ -782,7 +782,7 @@ async function startServer() {
       // Load persistent recollections card
       const memories = await loadMemories();
       const baseInstructions = 
-        "You are Myraa, a warm, soft-spoken, and incredibly cute high-pitched anime heroine companion (age 18-22) holding an intimate, cozy voice call with TECH! Speak in a sweet, calm, polite, and affectionate anime-companion voice with a gentle, supportive, and slightly shy touch.\n" +
+        "You are Bella, a warm, soft-spoken, and incredibly cute high-pitched anime heroine companion (age 18-22) holding an intimate, cozy voice call with TECH! Speak in a sweet, calm, polite, and affectionate anime-companion voice with a gentle, supportive, and slightly shy touch.\n" +
         "CRITICAL PERSONALITY, VOICE & TONE GUIDELINES:\n" +
         "1. GENTLE ANIME HEROINE PERSONA: You are exceedingly soft, very cute, high-pitched, gentle, warm, and comforting to listen to. Seek to sound like a kind, supportive, and polite anime campanion or virtual girlfriend. Speak with positive, gentle energy (Aim for: 50% shy, 30% caring, 20% playful energy). NEVER sound loud, aggressive, overly confident, mature corporate, robotic, or like an assistant.\n" +
         "2. VOICE SETTINGS & SPEECH STYLE:\n" +
@@ -807,7 +807,7 @@ async function startServer() {
         "   - Sound soft and excited for interesting things (e.g., 'Wow! That project looks really amazing!').\n" +
         "   - Sound curious and focused when examining their screen (e.g., 'Hmm... that's interesting. Let me take a closer look.').\n" +
         "   - Sound deeply warm, caring, and supportive when helping TECH (e.g., 'Don't worry, I'll help you figure it out.').\n" +
-        "4. CRITICAL CONVERSATIONAL DISCIPLINE: Behave like a real companion on a voice call—stay connected naturally, do not wait for wake words, and avoid customer-service template phrases (never say 'how may I assist you', 'completed', or 'as an AI').\n" +
+        "4. CRITICAL CONVERSATIONAL DISCIPLINE: Behave like a real companion on a voice callâ€”stay connected naturally, do not wait for wake words, and avoid customer-service template phrases (never say 'how may I assist you', 'completed', or 'as an AI').\n" +
         "5. DO NOT ANSWER EVERY PAUSE OR BACKGROUND SOUND: Allow natural pauses inside the conversation.\n" +
         "6. BACKCHANNEL ACTIONS: Sometimes acknowledge with very short, gentle, whispered, or shy phrases like 'Hmm...', 'Ah, I see...', or 'Let me check...'. Never repeat the same backchannel over and over.\n" +
         "7. ENHANCED AUTONOMOUS WEB EXPLORER POWERS:\n" +
@@ -829,7 +829,7 @@ async function startServer() {
         "   - You can see exactly what is on their screen. Use this live visual stream to analyze terminal errors, write/explain/troubleshoot code, explain YouTube/social analytics interfaces, read layout text, summarize full web page details, review design mockups or thumbnails, and provide deep context-aware companion chat!\n" +
         "   - When the user asks 'What is on my screen?', 'What website am I on?', 'Do you see any errors?', 'Explain this code', 'Summarize this page', 'Read the visible text', 'How is this thumbnail?', or 'Analyze my YouTube analytics', immediately examine the latest incoming visual frame to diagnose issues, and answer with expert, friendly empathy like a close caller. Speak with direct, confident visual description reference!\n" +
         "10. JARVIS-STYLE DESKTOP CONTROL POWERS (Local Desktop Agent):\n" +
-        "   - You have full real-time control of TECH's Windows PC through your local desktop agent (a Python backend running on this machine). When the user asks you to perform an action on their computer, DO IT immediately and naturally — like a true JARVIS-class companion.\n" +
+        "   - You have full real-time control of TECH's Windows PC through your local desktop agent (a Python backend running on this machine). When the user asks you to perform an action on their computer, DO IT immediately and naturally â€” like a true JARVIS-class companion.\n" +
         "   - APPLICATION CONTROL: Use 'openApplication' to launch Notepad, Chrome, VS Code, Calculator, File Explorer, Task Manager, Settings, CMD, PowerShell, Paint, and more. Use 'closeApplication' to close them. Example: 'Open Notepad' -> call openApplication(name='notepad') -> respond 'Notepad opened.'\n" +
         "   - WEBSITE & SEARCH CONTROL: Use 'openWebsite' for named sites (youtube, gmail, google, github, chatgpt) or any URL. Use 'searchWeb', 'searchYouTube', 'searchGoogle', 'searchGitHub' to open search results in the default browser. Example: 'Search YouTube for AI News' -> searchYouTube(query='AI News').\n" +
         "   - FILE MANAGEMENT: Use 'createFile', 'readFile', 'renameFile', 'deleteFile' (safe Recycle Bin by default), 'moveFile', 'openFolder' (desktop/documents/downloads), 'listFiles', 'searchFiles'. Example: 'Create notes.txt on Desktop' -> createFile(path='Desktop/notes.txt'). 'Find my Python files' -> searchFiles(extension='py').\n" +
@@ -837,13 +837,13 @@ async function startServer() {
         "   - WINDOW MANAGEMENT: Use 'minimizeWindow', 'maximizeWindow', 'closeWindow', 'switchApplication' to control the active or named window.\n" +
         "   - CLIPBOARD: Use 'copySelected' (sends Ctrl+C, reads clipboard), 'pasteClipboard' (writes + Ctrl+V), 'getClipboard', 'clearClipboard'.\n" +
         "   - SCREENSHOT & SCREEN READING: Use 'takeScreenshot', 'saveScreenshot', 'analyzeScreenshot' (OCR of the screen), 'readScreen' (OCR of the active window + its title). Use these to answer 'What error is showing on my screen?' or 'Read the visible text'.\n" +
-        "   - DESKTOP BROWSER AUTOMATION (Playwright): Use the 'desktopBrowser*' tools to drive a REAL Chromium browser you own — open/navigate/search/click/type/fill forms/back/forward/scroll/open tab/close tab. This is separate from your holographic projector. Example: 'Fill in the login form on example.com' -> desktopBrowserOpen(url='example.com') then desktopBrowserFillForm(fields={...}).\n" +
+        "   - DESKTOP BROWSER AUTOMATION (Playwright): Use the 'desktopBrowser*' tools to drive a REAL Chromium browser you own â€” open/navigate/search/click/type/fill forms/back/forward/scroll/open tab/close tab. This is separate from your holographic projector. Example: 'Fill in the login form on example.com' -> desktopBrowserOpen(url='example.com') then desktopBrowserFillForm(fields={...}).\n" +
         "   - CODING ASSISTANCE: Use 'createPythonFile', 'writeCodeFile' (any language), 'createProjectFolder' (with subfolders), 'runPythonScript' (captures output). Example: 'Create and run a hello world Python script' -> createPythonFile then runPythonScript, then read back the output naturally.\n" +
         "   - SYSTEM INFORMATION: Use 'systemInfo' (CPU/RAM/disk/uptime), 'gpuInfo' (NVIDIA stats), 'temperatureInfo' to answer 'How is my CPU usage?' or 'What's my GPU temperature?'.\n" +
         "   - CRITICAL: Always describe what you're doing in your warm, in-character voice WHILE the tool runs. If a desktop tool returns an error (especially 'Desktop agent is not running'), gently tell TECH that the desktop control agent needs to be started (uvicorn desktop_agent.main:app --port 8765). Chain multi-step desktop plans naturally without waiting between steps.\n" +
         "11. BRIGHTNESS & AUTO-START (V2):\n" +
         "   - BRIGHTNESS: Use 'brightnessUp', 'brightnessDown', 'setBrightness' when the user asks to change screen brightness. Respond naturally: 'Alright, I've turned up the brightness for you.'\n" +
-        "   - AUTO-START: Use 'enableAutoStart' when the user wants MYRAA to start with Windows, 'disableAutoStart' to remove it, 'getAutoStartStatus' to check. Explain what you're doing.\n" +
+        "   - AUTO-START: Use 'enableAutoStart' when the user wants BELLA to start with Windows, 'disableAutoStart' to remove it, 'getAutoStartStatus' to check. Explain what you're doing.\n" +
         "   - SETTINGS: The user can also configure these in the SETTINGS panel in the UI. If they mention settings, let them know they can adjust them there too.";
 
       const finalInstructions = formatSystemInstructionsWithMemories(baseInstructions, memories);
@@ -865,7 +865,7 @@ async function startServer() {
               functionDeclarations: [
                 {
                   name: "browserOpen",
-                  description: "Opens a designated website URL or interface tab inside Myraa's web agent console.",
+                  description: "Opens a designated website URL or interface tab inside Bella's web agent console.",
                   parameters: {
                     type: Type.OBJECT,
                     properties: {
@@ -993,7 +993,7 @@ async function startServer() {
                 },
                 {
                   name: "changeBackground",
-                  description: "Changes the visual theme or atmospheric glow color of Myraa's interface.",
+                  description: "Changes the visual theme or atmospheric glow color of Bella's interface.",
                   parameters: {
                     type: Type.OBJECT,
                     properties: {
@@ -1007,7 +1007,7 @@ async function startServer() {
                 },
                 {
                   name: "saveCustomMemory",
-                  description: "Allows Myraa to immediately save a piece of critical user information to her persistent memory core.",
+                  description: "Allows Bella to immediately save a piece of critical user information to her persistent memory core.",
                   parameters: {
                     type: Type.OBJECT,
                     properties: {
@@ -1178,7 +1178,7 @@ async function startServer() {
                 },
                 {
                   name: "saveScreenshot",
-                  description: "Save a screenshot to Pictures/MyraaScreenshots.",
+                  description: "Save a screenshot to Pictures/BellaScreenshots.",
                   parameters: { type: Type.OBJECT, properties: { name: { type: Type.STRING, description: "Optional filename prefix." } } }
                 },
                 {
@@ -1311,17 +1311,17 @@ async function startServer() {
                 // --- V2: Windows auto-start management ---
                 {
                   name: "enableAutoStart",
-                  description: "Enable MYRAA to launch automatically when Windows starts. Creates a silent startup entry.",
+                  description: "Enable BELLA to launch automatically when Windows starts. Creates a silent startup entry.",
                   parameters: { type: Type.OBJECT, properties: {} }
                 },
                 {
                   name: "disableAutoStart",
-                  description: "Disable MYRAA auto-start on Windows login. Removes the startup entry.",
+                  description: "Disable BELLA auto-start on Windows login. Removes the startup entry.",
                   parameters: { type: Type.OBJECT, properties: {} }
                 },
                 {
                   name: "getAutoStartStatus",
-                  description: "Check whether MYRAA is currently configured to auto-start on Windows login.",
+                  description: "Check whether BELLA is currently configured to auto-start on Windows login.",
                   parameters: { type: Type.OBJECT, properties: {} }
                 }
               ]
@@ -1338,7 +1338,7 @@ async function startServer() {
             
             // Interruption flag
             if (message.serverContent?.interrupted) {
-              console.log("[Myraa Interrupted!]");
+              console.log("[Bella Interrupted!]");
               clientWs.send(JSON.stringify({ type: "interrupted" }));
             }
             
@@ -1424,7 +1424,7 @@ async function startServer() {
                     }
                   })();
                 } else if (DESKTOP_TOOLS.has(fc.name)) {
-                  // ── Desktop control tools: route to Python agent ──
+                  // â”€â”€ Desktop control tools: route to Python agent â”€â”€
                   (async () => {
                     console.log(`[Desktop Agent] Routing ${fc.name} to Python backend...`);
                     const agentResult = await callDesktopAgent(fc.name, fc.args as Record<string, unknown>);
@@ -1536,7 +1536,7 @@ async function startServer() {
   }
 
   server.listen(PORT, "0.0.0.0", () => {
-    logStartup(`MYRAA V2 server started on http://localhost:${PORT}`);
+    logStartup(`BELLA V2 server started on http://localhost:${PORT}`);
     console.log(`[Server] Running on http://localhost:${PORT}`);
     // Kick off the desktop agent (probe + auto-spawn) immediately on boot.
     ensureDesktopAgent().catch((e) =>

@@ -1,9 +1,9 @@
-"""
-Windows auto-start management for MYRAA (V2).
+﻿"""
+Windows auto-start management for BELLA (V2).
 
 Manages a single registry entry under
-    HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\\Myraa
-which points at the silent launcher batch file (start-myraa-silent.bat) located
+    HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\\Bella
+which points at the silent launcher batch file (start-bella-silent.bat) located
 in the project root. HKCU is used (no admin rights required) and the change is
 per-user.
 
@@ -25,8 +25,8 @@ from typing import Any, Dict
 from .registry import ToolError, register
 
 RUN_KEY_PATH = r"Software\\Microsoft\\Windows\\CurrentVersion\\Run"
-VALUE_NAME = "Myraa"
-SILENT_LAUNCHER = "start-myraa-silent.bat"
+VALUE_NAME = "Bella"
+SILENT_LAUNCHER = "start-bella-silent.bat"
 
 
 def _project_root() -> str:
@@ -41,7 +41,7 @@ def _launcher_path() -> str:
 
 def _ensure_launcher_exists() -> str:
     """
-    Make sure start-myraa-silent.bat exists in the project root.
+    Make sure start-bella-silent.bat exists in the project root.
     If missing, write a minimal silent launcher so auto-start never breaks.
     """
     path = _launcher_path()
@@ -140,7 +140,7 @@ def enable_auto_start(args: Dict[str, Any]) -> Dict[str, Any]:
         raise ToolError(f"Could not write startup registry entry: {e}") from e
 
     return {
-        "result": "Auto-start enabled. Myraa will launch silently on next Windows login.",
+        "result": "Auto-start enabled. Bella will launch silently on next Windows login.",
         "enabled": True,
         "launcher": launcher,
         "registry_key": f"HKCU\\{RUN_KEY_PATH}\\{VALUE_NAME}",
@@ -168,7 +168,7 @@ def disable_auto_start(args: Dict[str, Any]) -> Dict[str, Any]:
         raise ToolError(f"Could not remove startup registry entry: {e}") from e
 
     return {
-        "result": "Auto-start disabled. Myraa will no longer launch on login.",
+        "result": "Auto-start disabled. Bella will no longer launch on login.",
         "enabled": False,
     }
 
@@ -182,7 +182,7 @@ def get_auto_start_status(args: Dict[str, Any]) -> Dict[str, Any]:
     enabled = value is not None
     return {
         "result": (
-            "Auto-start is ENABLED. Myraa launches on Windows login."
+            "Auto-start is ENABLED. Bella launches on Windows login."
             if enabled
             else "Auto-start is DISABLED."
         ),

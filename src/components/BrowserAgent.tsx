@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+﻿import React, { useState, useEffect, useRef } from "react";
 import { 
   X, 
   ExternalLink, 
@@ -269,7 +269,7 @@ export const BrowserAgent: React.FC<BrowserAgentProps> = ({
   useEffect(() => {
     const handleNavigationMessage = (event: MessageEvent) => {
       if (event.data && event.data.type === "NAVIGATE" && event.data.url) {
-        console.log("[Myraa Browser] Same-origin child iframe navigated to:", event.data.url);
+        console.log("[Bella Browser] Same-origin child iframe navigated to:", event.data.url);
         navigateToUrl(event.data.url);
       }
     };
@@ -282,7 +282,7 @@ export const BrowserAgent: React.FC<BrowserAgentProps> = ({
     if (!actionTrigger) return;
 
     const { type, args, callback } = actionTrigger;
-    console.log(`[Myraa Browser Hub] Automated Voice Trigger: ${type}`, args);
+    console.log(`[Bella Browser Hub] Automated Voice Trigger: ${type}`, args);
 
     const runVoiceAutomation = async () => {
       try {
@@ -627,7 +627,7 @@ export const BrowserAgent: React.FC<BrowserAgentProps> = ({
         const iframe = iframeRef.current;
         if (iframe && iframe.contentDocument) {
           const bodyTxt = iframe.contentDocument.body?.innerText || "";
-          if (bodyTxt.includes("Myraa Web Proxy Error") || bodyTxt.includes("Failed loading remote website")) {
+          if (bodyTxt.includes("Bella Web Proxy Error") || bodyTxt.includes("Failed loading remote website")) {
             setDiagnosticStatus("error");
             setDiagnosticReason(bodyTxt);
             setNetworkErrors(prev => [...prev, "Proxy server failed to resolve target host."]);
@@ -647,7 +647,7 @@ export const BrowserAgent: React.FC<BrowserAgentProps> = ({
 
   return (
     <div
-      id="myraa-playwright-automation-hud"
+      id="bella-playwright-automation-hud"
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-xl animate-fade-in text-left select-none"
     >
       <div className="relative w-full max-w-5xl h-[88vh] flex flex-col rounded-3xl border border-white/10 bg-slate-900/85 shadow-[0_0_90px_rgba(168,85,247,0.4)] overflow-hidden">
@@ -848,7 +848,7 @@ export const BrowserAgent: React.FC<BrowserAgentProps> = ({
 
                 <div className="p-3 border border-white/5 bg-slate-950/50 rounded-2xl max-w-md w-full">
                   <p className="text-[9px] font-mono text-slate-500 leading-normal uppercase">
-                    🌸 COMPANION TIP: Voice command Myraa to trigger any automation: <br />
+                    ðŸŒ¸ COMPANION TIP: Voice command Bella to trigger any automation: <br />
                     <span className="text-indigo-400 font-bold">&ldquo;Search YouTube for Naruto opening&rdquo;</span>
                   </p>
                 </div>
@@ -877,7 +877,7 @@ export const BrowserAgent: React.FC<BrowserAgentProps> = ({
                       SANDBOX CORS / CSP NEUTRALIZATION INJECTED
                     </h3>
                     <p className="text-xs font-sans text-slate-400 leading-relaxed max-w-md mx-auto">
-                      Myraa automatically detected secure sandbox constraints for <span className="font-mono text-indigo-300 font-semibold">{getCleanTitleFromUrl(activeTab?.url || "")}</span>. 
+                      Bella automatically detected secure sandbox constraints for <span className="font-mono text-indigo-300 font-semibold">{getCleanTitleFromUrl(activeTab?.url || "")}</span>. 
                       To bypass iframe restrictions and secure your cookies, we loaded this real website in a native browser tab!
                     </p>
                   </div>
@@ -927,7 +927,7 @@ export const BrowserAgent: React.FC<BrowserAgentProps> = ({
                       Web Proxy Connection Refused
                     </h3>
                     <p className="text-xs font-sans text-slate-400 leading-relaxed max-w-sm mx-auto font-medium">
-                      Myraa was unable to load <span className="font-mono text-indigo-300 font-semibold">{getCleanTitleFromUrl(activeTab?.url || "")}</span> securely. This website may be offline, spelled incorrectly, or blocking automated server access.
+                      Bella was unable to load <span className="font-mono text-indigo-300 font-semibold">{getCleanTitleFromUrl(activeTab?.url || "")}</span> securely. This website may be offline, spelled incorrectly, or blocking automated server access.
                     </p>
                   </div>
 
@@ -1024,7 +1024,7 @@ export const BrowserAgent: React.FC<BrowserAgentProps> = ({
 
                           <div className="flex items-center justify-between border-t border-white/5 pt-2.5 text-[9px] font-mono text-slate-500">
                             <span>{video.views}</span>
-                            <span className="text-slate-600">•</span>
+                            <span className="text-slate-600">â€¢</span>
                             <span>{video.published || "Active Video"}</span>
                           </div>
                         </div>
@@ -1096,7 +1096,7 @@ export const BrowserAgent: React.FC<BrowserAgentProps> = ({
                     <div className="flex-1 overflow-y-auto space-y-5 pr-1 select-text">
                       <div className="p-3.5 rounded-xl border border-indigo-500/10 bg-indigo-505/10 text-[11px] font-sans leading-normal text-indigo-300">
                         <p className="font-bold uppercase tracking-wider text-xs mb-1">Local Browser Sync Mode</p>
-                        <span>If you prefer to command a real, headed Chrome browser on your desktop computer, easily launch Myraa's local client script!</span>
+                        <span>If you prefer to command a real, headed Chrome browser on your desktop computer, easily launch Bella's local client script!</span>
                       </div>
 
                       <div className="space-y-4 font-mono text-[10px]">
@@ -1136,7 +1136,7 @@ export const BrowserAgent: React.FC<BrowserAgentProps> = ({
                     // Live Local terminal system trace logs
                     <div className="flex-1 overflow-y-auto font-mono text-[10px] space-y-2 pr-1 select-text scrollbar-thin">
                       {localLogs.length === 0 ? (
-                        <div className="text-slate-600 italic">No operations recorded yet. Speaking with Myraa will generate real terminal logs.</div>
+                        <div className="text-slate-600 italic">No operations recorded yet. Speaking with Bella will generate real terminal logs.</div>
                       ) : (
                         localLogs.map((log) => (
                           <div
@@ -1159,7 +1159,7 @@ export const BrowserAgent: React.FC<BrowserAgentProps> = ({
                   )}
 
                   <div className="pt-2.5 border-t border-white/5 text-[9px] font-mono text-slate-500 text-center uppercase tracking-widest">
-                    SYNC CONTROLLER • v1.1.0
+                    SYNC CONTROLLER â€¢ v1.1.0
                   </div>
                 </div>
               </motion.div>
@@ -1183,7 +1183,7 @@ export const BrowserAgent: React.FC<BrowserAgentProps> = ({
                 <div className="md:col-span-4 flex items-center justify-between border-b border-white/5 pb-1.5 mb-1 text-[11px] font-extrabold uppercase text-amber-400">
                   <div className="flex items-center gap-1.5">
                     <Terminal size={13} className="animate-pulse" />
-                    <span>Active Myraa Browser Diagnostics console</span>
+                    <span>Active Bella Browser Diagnostics console</span>
                   </div>
                   <span className="text-[9px] text-slate-500 hover:text-slate-300 cursor-pointer" onClick={() => setShowDebugPanel(false)}>
                     Collapse [x]
