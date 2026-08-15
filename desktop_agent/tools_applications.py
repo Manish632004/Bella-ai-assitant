@@ -11,6 +11,7 @@ grace period so apps can save work.
 
 from __future__ import annotations
 
+import glob
 import os
 import shutil
 import subprocess
@@ -19,15 +20,20 @@ from typing import Any, Dict
 
 from .registry import ToolError, register
 
-# Canonical app key -> (launch_command, kind)
-#   kind == "exe"   : launch_command is the executable name (resolved via PATH/App Paths)
-#   kind == "shell" : launch_command is a shell builtin verb run with cmd /c
-#   kind == "uwp"   : launch_command is an apps-family activation string
-APP_COMMANDS: Dict[str, Dict[str, str]] = {
-    "notepad": {"exe": "notepad.exe", "image": "notepad.exe", "label": "Notepad"},
+KNOWN_APPS: Dict[str, Dict[str, str]] = {
+    "notion": {"uri": "notion://", "exe": os.path.expandvars(r"%LOCALAPPDATA%\Programs\Notion\Notion.exe"), "image": "Notion.exe", "label": "Notion"},
+    "edge": {"uri": "microsoft-edge:http://", "exe": "msedge.exe", "image": "msedge.exe", "label": "Microsoft Edge"},
+    "microsoft edge": {"uri": "microsoft-edge:http://", "exe": "msedge.exe", "image": "msedge.exe", "label": "Microsoft Edge"},
+    "msedge": {"uri": "microsoft-edge:http://", "exe": "msedge.exe", "image": "msedge.exe", "label": "Microsoft Edge"},
+    "spotify": {"uri": "spotify://", "exe": os.path.expandvars(r"%APPDATA%\Spotify\Spotify.exe"), "image": "Spotify.exe", "label": "Spotify"},
+    "discord": {"uri": "discord://", "exe": "Discord.exe", "image": "Discord.exe", "label": "Discord"},
     "chrome": {"exe": "chrome.exe", "image": "chrome.exe", "label": "Google Chrome"},
-    "edge": {"exe": "msedge.exe", "image": "msedge.exe", "label": "Microsoft Edge"},
-    "vscode": {"exe": "code.cmd", "image": "Code.exe", "label": "Visual Studio Code"},
+    "google chrome": {"exe": "chrome.exe", "image": "chrome.exe", "label": "Google Chrome"},
+    "brave": {"exe": "brave.exe", "image": "brave.exe", "label": "Brave Browser"},
+    "notepad": {"exe": "notepad.exe", "image": "notepad.exe", "label": "Notepad"},
+    "vscode": {"exe": "code", "image": "Code.exe", "label": "Visual Studio Code"},
+    "code": {"exe": "code", "image": "Code.exe", "label": "Visual Studio Code"},
+    "vs code": {"exe": "code", "image": "Code.exe", "label": "Visual Studio Code"},
     "calculator": {"shell": "calc", "image": "CalculatorApp.exe", "label": "Calculator"},
     "calc": {"shell": "calc", "image": "CalculatorApp.exe", "label": "Calculator"},
     "file explorer": {"shell": "explorer", "image": "explorer.exe", "label": "File Explorer"},
@@ -35,77 +41,104 @@ APP_COMMANDS: Dict[str, Dict[str, str]] = {
     "task manager": {"shell": "taskmgr", "image": "Taskmgr.exe", "label": "Task Manager"},
     "taskmanager": {"shell": "taskmgr", "image": "Taskmgr.exe", "label": "Task Manager"},
     "settings": {"uwp": "ms-settings:", "image": "SystemSettings.exe", "label": "Settings"},
-    "command prompt": {"exe": "cmd.exe", "image": "cmd.exe", "label": "Command Prompt"},
     "cmd": {"exe": "cmd.exe", "image": "cmd.exe", "label": "Command Prompt"},
     "powershell": {"exe": "powershell.exe", "image": "powershell.exe", "label": "PowerShell"},
-    "wordpad": {"shell": "write", "image": "wordpad.exe", "label": "WordPad"},
     "paint": {"shell": "mspaint", "image": "mspaint.exe", "label": "Paint"},
-    "snipping tool": {"uwp": "ms-screenclip:", "image": "ScreenClippingHost.exe", "label": "Snipping Tool"},
+    "whatsapp": {"uri": "whatsapp:", "image": "WhatsApp.exe", "label": "WhatsApp"},
+    "telegram": {"uri": "tg://", "image": "Telegram.exe", "label": "Telegram"},
+    "obsidian": {"uri": "obsidian://", "image": "Obsidian.exe", "label": "Obsidian"},
 }
 
 
-def _resolve_app(key: str) -> Dict[str, str]:
-    norm = (key or "").strip().lower()
-    if norm in APP_COMMANDS:
-        return APP_COMMANDS[norm]
-    # Allow loose aliases (e.g. "code", "visual studio code").
-    aliases = {
-        "code": "vscode",
-        "visual studio code": "vscode",
-        "vs code": "vscode",
-        "google chrome": "chrome",
-        "microsoft edge": "edge",
-        "calc": "calculator",
-        "settings app": "settings",
-        "file explorer": "file explorer",
-        "windows explorer": "file explorer",
-    }
-    if norm in aliases and aliases[norm] in APP_COMMANDS:
-        return APP_COMMANDS[aliases[norm]]
-    raise ToolError(
-        f"Unrecognized application '{key}'. Supported: "
-        f"{', '.join(sorted({v['label'] for v in APP_COMMANDS.values()}))}."
-    )
+def _find_start_menu_shortcut(app_name: str) -> str | None:
+    search_dirs = [
+        os.path.expandvars(r"%APPDATA%\Microsoft\Windows\Start Menu\Programs"),
+        os.path.expandvars(r"%ProgramData%\Microsoft\Windows\Start Menu\Programs"),
+    ]
+    app_lower = app_name.lower()
+    for sdir in search_dirs:
+        if not os.path.exists(sdir):
+            continue
+        for root, _, files in os.walk(sdir):
+            for f in files:
+                if f.lower().endswith(".lnk") and app_lower in f.lower():
+                    return os.path.join(root, f)
+    return None
 
 
-def _launch(spec: Dict[str, str]) -> None:
+def _find_installed_exe(app_name: str) -> str | None:
+    search_dirs = [
+        os.path.expandvars(r"%LOCALAPPDATA%\Programs"),
+        os.path.expandvars(r"%ProgramFiles%"),
+        os.path.expandvars(r"%ProgramFiles(x86)%"),
+    ]
+    app_lower = app_name.lower()
+    for sdir in search_dirs:
+        if not os.path.exists(sdir):
+            continue
+        for root, _, files in os.walk(sdir):
+            # Limit depth for performance
+            rel = os.path.relpath(root, sdir)
+            if rel.count(os.sep) > 3:
+                continue
+            for f in files:
+                if f.lower().endswith(".exe") and app_lower in f.lower():
+                    if not any(bad in f.lower() for bad in ["unins", "helper", "crash", "update"]):
+                        return os.path.join(root, f)
+    return None
+
+
+def _launch_universal(name: str) -> str:
+    norm = name.strip().lower()
+
+    # 1. Check known presets
+    if norm in KNOWN_APPS:
+        app = KNOWN_APPS[norm]
+        if "uri" in app:
+            try:
+                subprocess.Popen(f'start "" "{app["uri"]}"', shell=True)
+                return app["label"]
+            except Exception:
+                pass
+        if "exe" in app:
+            exe_target = app["exe"]
+            if os.path.exists(exe_target) or shutil.which(exe_target):
+                subprocess.Popen(f'start "" "{exe_target}"', shell=True)
+                return app["label"]
+        if "shell" in app:
+            subprocess.Popen(f'start "" {app["shell"]}', shell=True)
+            return app["label"]
+        if "uwp" in app:
+            subprocess.Popen(f'start "" {app["uwp"]}', shell=True)
+            return app["label"]
+
+    # 2. Check Start Menu .lnk shortcut
+    shortcut = _find_start_menu_shortcut(norm)
+    if shortcut:
+        subprocess.Popen(f'start "" "{shortcut}"', shell=True)
+        return os.path.splitext(os.path.basename(shortcut))[0]
+
+    # 3. Check AppData / Program Files
+    exe_path = _find_installed_exe(norm)
+    if exe_path:
+        subprocess.Popen(f'start "" "{exe_path}"', shell=True)
+        return os.path.splitext(os.path.basename(exe_path))[0]
+
+    # 4. Direct shell fallback
     try:
-        if "exe" in spec:
-            exe = spec["exe"]
-            if shutil.which(exe) or exe.lower().endswith(".exe"):
-                # Detached so we don't block the agent.
-                subprocess.Popen(
-                    [exe],
-                    shell=False,
-                    close_fds=True,
-                    creationflags=getattr(subprocess, "DETACHED_PROCESS", 0)
-                    | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
-                )
-            else:
-                # e.g. `code.cmd` lives in PATH; rely on shell resolution.
-                subprocess.Popen(f'start "" "{exe}"', shell=True, close_fds=True)
-        elif "shell" in spec:
-            subprocess.Popen(
-                f'start "" {spec["shell"]}', shell=True, close_fds=True
-            )
-        elif "uwp" in spec:
-            subprocess.Popen(
-                f'start "" {spec["uwp"]}', shell=True, close_fds=True
-            )
-        else:
-            raise ToolError(f"App spec for {spec.get('label')} is incomplete.")
-    except Exception as e:  # noqa: BLE001
-        raise ToolError(f"Could not launch {spec.get('label')}: {e}") from e
+        subprocess.Popen(f'start "" "{name}"', shell=True)
+        return name
+    except Exception as e:
+        raise ToolError(f"Could not open application '{name}': {e}") from e
 
 
 @register("openApplication")
 def open_application(args: Dict[str, Any]) -> Dict[str, Any]:
-    name = args.get("name") or args.get("application")
+    name = args.get("name") or args.get("application") or args.get("app")
     if not name:
         raise ToolError("Parameter 'name' (application name) is required.")
-    spec = _resolve_app(str(name))
-    _launch(spec)
-    return {"result": f"{spec['label']} opened."}
+    label = _launch_universal(str(name))
+    return {"result": f"{label} opened."}
 
 
 @register("closeApplication")

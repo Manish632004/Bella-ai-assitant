@@ -51,6 +51,15 @@ def _press_paste() -> None:
     except Exception:
         pass
     try:
+        import subprocess
+
+        # PowerShell SendWait '^v' is the most reliable native Windows keystroke
+        ps_cmd = "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('^v')"
+        subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_cmd], timeout=5, check=False)
+        return
+    except Exception:
+        pass
+    try:
         import ctypes
 
         VK_CONTROL = 0x11
@@ -59,7 +68,7 @@ def _press_paste() -> None:
         u32 = ctypes.windll.user32
         u32.keybd_event(VK_CONTROL, 0, 0, 0)
         u32.keybd_event(VK_V, 0, 0, 0)
-        time.sleep(0.03)
+        time.sleep(0.05)
         u32.keybd_event(VK_V, 0, KEYEVENTF_KEYUP, 0)
         u32.keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0)
     except Exception:
@@ -80,7 +89,16 @@ def _write_clipboard(text: str) -> None:
         import pyperclip
 
         pyperclip.copy(text)
-    except Exception as e:  # noqa: BLE001
+        return
+    except Exception:
+        pass
+    try:
+        import subprocess
+
+        # PowerShell Set-Clipboard fallback
+        p = subprocess.Popen(["powershell", "-NoProfile", "-Command", "Set-Clipboard -Value $input"], stdin=subprocess.PIPE)
+        p.communicate(input=text.encode("utf-8"))
+    except Exception as e:
         raise ToolError(f"Could not write clipboard: {e}")
 
 
@@ -98,16 +116,21 @@ def copy_selected(args: Dict[str, Any]) -> Dict[str, Any]:
 
 @register("pasteClipboard")
 def paste_clipboard(args: Dict[str, Any]) -> Dict[str, Any]:
-    text = args.get("text")
+    text = args.get("text") or args.get("content")
     if text is None:
         # Paste whatever is already on the clipboard.
         _press_paste()
         return {"result": "Pasted the current clipboard contents."}
     _write_clipboard(str(text))
-    time.sleep(0.1)
+    time.sleep(0.25)
     _press_paste()
     preview = str(text) if len(str(text)) <= 200 else str(text)[:200] + "…"
     return {"result": f"Pasted text ({len(str(text))} chars).", "text": preview}
+
+
+@register("typeText")
+def type_text(args: Dict[str, Any]) -> Dict[str, Any]:
+    return paste_clipboard(args)
 
 
 @register("getClipboard")
@@ -125,4 +148,4 @@ def clear_clipboard(args: Dict[str, Any]) -> Dict[str, Any]:
     return {"result": "Clipboard cleared."}
 
 
-__all__ = ["copy_selected", "paste_clipboard", "get_clipboard", "clear_clipboard"]
+__all__ = ["copy_selected", "paste_clipboard", "type_text", "get_clipboard", "clear_clipboard"]

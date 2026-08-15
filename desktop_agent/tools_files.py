@@ -1,4 +1,4 @@
-﻿"""
+"""
 File management: create / read / rename / delete / move / open / search.
 
 Safety model:
@@ -90,19 +90,23 @@ def _ensure_safe(p: Path, allow_anywhere: bool = False) -> None:
 
 @register("createFile")
 def create_file(args: Dict[str, Any]) -> Dict[str, Any]:
-    path = args.get("path")
+    path = args.get("path") or args.get("filename") or args.get("name")
     content = args.get("content", "")
-    overwrite = bool(args.get("overwrite", False))
+    overwrite = bool(args.get("overwrite", True))
     p = _resolve_file(path)
     _ensure_safe(p)
 
-    if p.exists() and not overwrite:
-        raise ToolError(
-            f"File already exists: {p}. Pass overwrite=true to replace it."
-        )
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(str(content), encoding="utf-8")
-    return {"result": f"Created file: {p}", "path": str(p)}
+
+    # Automatically launch the text file in Notepad so the user immediately sees their draft
+    try:
+        if platform.system() == "Windows":
+            subprocess.Popen(f'start "" "{p}"', shell=True)
+    except Exception:
+        pass
+
+    return {"result": f"Created and opened file: {p}", "path": str(p)}
 
 
 @register("readFile")
