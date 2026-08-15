@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Audio handling utility for Bella Live API Voice stream.
  * Handles:
  * - 16kHz layout sampling for microphone stream.
@@ -96,13 +96,16 @@ export class BellaAudioSession {
     onToolCall: (name: string, args: any, callback: (result: any) => void) => void;
     onError: (error: string) => void;
     onMemorySync?: (memories: any[]) => void;
+    onMiniModeChange?: (enabled: boolean) => void;
   }) {
     this.onStateChange = handlers.onStateChange;
     this.onTranscription = handlers.onTranscription;
     this.onToolCall = handlers.onToolCall;
     this.onError = handlers.onError;
     this.onMemorySync = handlers.onMemorySync;
+    this.onMiniModeChange = handlers.onMiniModeChange;
   }
+  private onMiniModeChange?: (enabled: boolean) => void;
 
   private setState(state: LiveState) {
     this.currentState = state;
@@ -245,6 +248,10 @@ export class BellaAudioSession {
               this.disconnect();
             }
             return;
+          }
+
+          if (data.type === "mini_mode" && this.onMiniModeChange) {
+            this.onMiniModeChange(Boolean(data.enabled));
           }
 
           // Handle audio payload (24kHzPCM model response)

@@ -9,6 +9,7 @@ import {
   Sparkles, 
   Globe, 
   Maximize2, 
+  Minimize2,
   MessageSquareOff, 
   Compass, 
   CircleAlert,
@@ -22,6 +23,7 @@ import {
   Square,
   RefreshCw,
   PictureInPicture2,
+  Minus,
   Settings as SettingsIcon
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
@@ -226,6 +228,37 @@ export default function App() {
   const [characterState, setCharacterState] = useState<"idle" | "thinking" | "talking">("idle");
   const [isMiniMode, setIsMiniMode] = useState<boolean>(false);
 
+  // Sync mini mode state with native Electron window
+  useEffect(() => {
+    if ((window as any).bella?.setMiniMode) {
+      (window as any).bella.setMiniMode(isMiniMode);
+    }
+  }, [isMiniMode]);
+
+  // Voice triggers for floating / expanding
+  useEffect(() => {
+    if (!userCaption) return;
+    const lower = userCaption.toLowerCase();
+    if (
+      lower.includes("shrink") ||
+      lower.includes("mini mode") ||
+      lower.includes("float mode") ||
+      lower.includes("float character") ||
+      lower.includes("corner avatar") ||
+      lower.includes("go to corner")
+    ) {
+      setIsMiniMode(true);
+    } else if (
+      lower.includes("expand stage") ||
+      lower.includes("full screen") ||
+      lower.includes("maximize") ||
+      lower.includes("exit mini") ||
+      lower.includes("full stage")
+    ) {
+      setIsMiniMode(false);
+    }
+  }, [userCaption]);
+
   const detectEmotionFromText = (text: string): BellaEmotion => {
     const lower = text.toLowerCase();
     if (lower.includes("haha") || lower.includes("lol") || lower.includes("funny") || lower.includes("joke") || lower.includes("hehe") || lower.includes("wink")) return "playful";
@@ -276,6 +309,15 @@ export default function App() {
       (window as any).bella.setMiniMode(isMiniMode);
     }
   }, [isMiniMode]);
+
+  // Listen to taskbar click / restore full mode event from native desktop shell
+  useEffect(() => {
+    if ((window as any).bella?.onRestoreFullMode) {
+      (window as any).bella.onRestoreFullMode(() => {
+        setIsMiniMode(false);
+      });
+    }
+  }, []);
 
   // V2: Wake word detector instance (Web Speech API, lives for the app lifetime)
   const wakeDetectorRef = useRef<BellaWakeWordDetector | null>(null);
@@ -457,6 +499,10 @@ export default function App() {
         if (Array.isArray(updatedMemories)) {
           setMemories(updatedMemories);
         }
+      },
+      onMiniModeChange: (enabled) => {
+        console.log("[App] Mini mode transition triggered:", enabled);
+        setIsMiniMode(enabled);
       }
     });
 
@@ -529,18 +575,64 @@ export default function App() {
   return (
     <div
       id="bella-holographic-desktop"
-      className={`relative w-full h-screen overflow-hidden bg-[#020205] text-white ${getAmbientStyles()} theme-transition flex flex-col justify-between p-6 sm:p-10 select-none`}
+      className={`relative w-full h-screen overflow-hidden ${
+        isMiniMode 
+          ? "bg-transparent p-0 flex items-center justify-center pointer-events-auto" 
+          : `bg-[#020205] text-white ${getAmbientStyles()} theme-transition flex flex-col justify-between p-6 sm:p-10`
+      } select-none`}
     >
-      {/* Ambient Background Gradients matching Frosted Glass theme */}
-      <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-purple-900/15 rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-[-10%] right-[-10%] w-[600px] h-[600px] bg-cyan-900/15 rounded-full blur-[150px] pointer-events-none" />
-      <div className="absolute top-[20%] right-[10%] w-[300px] h-[300px] bg-indigo-800/10 rounded-full blur-[100px] pointer-events-none" />
+      {/* Ambient Background Gradients matching Frosted Glass theme (Full stage only) */}
+      {!isMiniMode && (
+        <>
+          <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-purple-900/15 rounded-full blur-[120px] pointer-events-none" />
+          <div className="absolute bottom-[-10%] right-[-10%] w-[600px] h-[600px] bg-cyan-900/15 rounded-full blur-[150px] pointer-events-none" />
+          <div className="absolute top-[20%] right-[10%] w-[300px] h-[300px] bg-indigo-800/10 rounded-full blur-[100px] pointer-events-none" />
+          <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.012)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.012)_1px,transparent_1px)] bg-[size:32px_32px] pointer-events-none opacity-40" />
+        </>
+      )}
 
-      {/* Decorative grid pattern background */}
-      <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.012)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.012)_1px,transparent_1px)] bg-[size:32px_32px] pointer-events-none opacity-40" />
+      {/* Custom title bar for frameless window (desktop only, full mode only) */}
+      {!isMiniMode && (window as any)?.bella?.isDesktop && (
+        <div
+          className="absolute top-0 left-0 right-0 z-[999] flex items-center justify-between h-9 select-none"
+          style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+        >
+          {/* Left side - app title */}
+          <div className="flex items-center gap-2 pl-3 text-[10px] font-mono tracking-[0.3em] text-white/20 uppercase">
+            BELLA
+          </div>
+          {/* Right side - window controls (no-drag so buttons work) */}
+          <div
+            className="flex items-center h-full"
+            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+          >
+            <button
+              onClick={() => (window as any).bella.minimizeWindow()}
+              className="h-full px-3.5 flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white/80 transition cursor-pointer"
+              title="Minimize"
+            >
+              <Minus size={13} />
+            </button>
+            <button
+              onClick={() => (window as any).bella.maximizeWindow()}
+              className="h-full px-3.5 flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white/80 transition cursor-pointer"
+              title="Maximize"
+            >
+              <Maximize2 size={11} />
+            </button>
+            <button
+              onClick={() => (window as any).bella.closeWindow()}
+              className="h-full px-3.5 flex items-center justify-center hover:bg-red-500/80 text-white/40 hover:text-white transition cursor-pointer"
+              title="Close"
+            >
+              <X size={13} />
+            </button>
+          </div>
+        </div>
+      )}
 
-      {/* FULL VIEWPORT HOLOGRAPHIC STAGE: Bella materializes across the entire screen or as a floating mini avatar */}
-      <div className={`absolute inset-0 ${isMiniMode ? "z-50 pointer-events-none" : "z-0 pointer-events-none"} select-none`}>
+      {/* FULL VIEWPORT HOLOGRAPHIC STAGE / FLOATING COMPANION */}
+      <div className={`absolute inset-0 ${isMiniMode ? "z-50 pointer-events-auto" : "z-0 pointer-events-none"} select-none`}>
         <BellaCoreVisualizer
           session={sessionRef.current}
           state={state}
@@ -552,316 +644,321 @@ export default function App() {
         />
       </div>
 
-      {/* HEADER SECTION - Minimalist typography */}
-      <header className="relative z-30 flex items-center justify-between w-full max-w-5xl mx-auto select-none">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold tracking-[0.4em] text-white/50 uppercase font-sans">
-            Bella
-          </span>
-          <div className={`w-1.5 h-1.5 rounded-full ${
-            state === "listening" || state === "speaking" 
-              ? "bg-cyan-400" 
-              : "bg-white/10"
-          }`} />
-        </div>
+      {/* FULL STAGE HEADER SECTION */}
+      {!isMiniMode && (
+        <header className="relative z-30 flex items-center justify-between w-full max-w-5xl mx-auto select-none">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold tracking-[0.4em] text-white/50 uppercase font-sans">
+              Bella
+            </span>
+            <div className={`w-1.5 h-1.5 rounded-full ${
+              state === "listening" || state === "speaking" 
+                ? "bg-cyan-400" 
+                : "bg-white/10"
+            }`} />
+          </div>
 
-        <div className="flex items-center gap-5">
-          {/* Float / Stage mode toggler button */}
-          <button
-            onClick={() => setIsMiniMode(!isMiniMode)}
-            className={`flex items-center gap-1.5 transition text-xs font-mono tracking-widest cursor-pointer ${
-              isMiniMode
-                ? "text-cyan-400 opacity-100 font-semibold"
-                : "opacity-25 hover:opacity-100 text-white"
-            }`}
-            title={isMiniMode ? "Expand to Full Stage" : "Float Mini Character"}
-          >
-            <PictureInPicture2 size={14} />
-            <span>{isMiniMode ? "EXPAND" : "FLOAT"}</span>
-          </button>
+          <div className="flex items-center gap-5">
+            {/* Float / Stage mode toggler button */}
+            <button
+              onClick={() => setIsMiniMode(!isMiniMode)}
+              className={`flex items-center gap-1.5 transition text-xs font-mono tracking-widest cursor-pointer ${
+                isMiniMode
+                  ? "text-cyan-400 opacity-100 font-semibold"
+                  : "opacity-25 hover:opacity-100 text-white"
+              }`}
+              title={isMiniMode ? "Expand to Full Stage" : "Float Mini Character"}
+            >
+              <PictureInPicture2 size={14} />
+              <span>{isMiniMode ? "EXPAND" : "FLOAT"}</span>
+            </button>
 
-          {/* Faint utilities hidden in margin */}
-          <button
-            onClick={() => setShowGuide(!showGuide)}
-            className="flex items-center gap-1 opacity-25 hover:opacity-100 text-white transition text-xs font-mono tracking-widest cursor-pointer"
-            title="Sway Themes and Info"
-          >
-            <Compass size={14} />
-            <span className="hidden sm:inline">TOPICS</span>
-          </button>
+            {/* Faint utilities hidden in margin */}
+            <button
+              onClick={() => setShowGuide(!showGuide)}
+              className="flex items-center gap-1 opacity-25 hover:opacity-100 text-white transition text-xs font-mono tracking-widest cursor-pointer"
+              title="Sway Themes and Info"
+            >
+              <Compass size={14} />
+              <span className="hidden sm:inline">TOPICS</span>
+            </button>
+            
+            <button 
+              onClick={() => setShowMemoryDashboard(!showMemoryDashboard)}
+              className="flex items-center gap-1 opacity-25 hover:opacity-100 text-white transition text-xs font-mono tracking-widest cursor-pointer"
+              title="Recollections Database"
+            >
+              <Brain size={14} />
+              <span className="hidden sm:inline">RECALLS</span>
+            </button>
+
+            {/* Real-time screen sharing toggler button */}
+            <button 
+              onClick={isScreenSharing ? stopScreenSharing : startScreenSharing}
+              className={`flex items-center gap-1.5 transition text-xs font-mono tracking-widest cursor-pointer ${
+                isScreenSharing 
+                  ? "text-cyan-400 opacity-100 font-semibold" 
+                  : "opacity-25 hover:opacity-100 text-white"
+              }`}
+              title="Share Screen with Bella"
+            >
+              <Monitor size={14} className={isScreenSharing && !isScreenSharingPaused ? "animate-pulse text-cyan-400" : ""} />
+              <span>{isScreenSharing ? "SHARING" : "SHARE SCREEN"}</span>
+            </button>
+
+            {/* V2: Settings toggler button */}
+            <button
+              onClick={() => setShowSettings(!showSettings)}
+              className={`flex items-center gap-1.5 transition text-xs font-mono tracking-widest cursor-pointer ${
+                showSettings
+                  ? "text-cyan-400 opacity-100 font-semibold"
+                  : "opacity-25 hover:opacity-100 text-white"
+              }`}
+              title="Bella Configuration"
+            >
+              <SettingsIcon size={14} className={showSettings ? "animate-spin [animation-duration:6s]" : ""} />
+              <span>SETTINGS</span>
+            </button>
+          </div>
+        </header>
+      )}
+
+      {/* CORE AVATAR AND VISUALS (Full stage only) */}
+      {!isMiniMode && (
+        <main className="relative z-10 flex-1 w-full max-w-4xl mx-auto flex flex-col items-center justify-between py-6">
           
-          <button 
-            onClick={() => setShowMemoryDashboard(!showMemoryDashboard)}
-            className="flex items-center gap-1 opacity-25 hover:opacity-100 text-white transition text-xs font-mono tracking-widest cursor-pointer"
-            title="Recollections Database"
-          >
-            <Brain size={14} />
-            <span className="hidden sm:inline">RECALLS</span>
-          </button>
-
-          {/* Real-time screen sharing toggler button inside Bella glass style header */}
-          <button 
-            onClick={isScreenSharing ? stopScreenSharing : startScreenSharing}
-            className={`flex items-center gap-1.5 transition text-xs font-mono tracking-widest cursor-pointer ${
-              isScreenSharing 
-                ? "text-cyan-400 opacity-100 font-semibold" 
-                : "opacity-25 hover:opacity-100 text-white"
-            }`}
-            title="Share Screen with Bella"
-          >
-            <Monitor size={14} className={isScreenSharing && !isScreenSharingPaused ? "animate-pulse text-cyan-400" : ""} />
-            <span>{isScreenSharing ? "SHARING" : "SHARE SCREEN"}</span>
-          </button>
-
-          {/* V2: Settings toggler button — matches existing faint-to-hover header style */}
-          <button
-            onClick={() => setShowSettings(!showSettings)}
-            className={`flex items-center gap-1.5 transition text-xs font-mono tracking-widest cursor-pointer ${
-              showSettings
-                ? "text-cyan-400 opacity-100 font-semibold"
-                : "opacity-25 hover:opacity-100 text-white"
-            }`}
-            title="Bella Configuration"
-          >
-            <SettingsIcon size={14} className={showSettings ? "animate-spin [animation-duration:6s]" : ""} />
-            <span>SETTINGS</span>
-          </button>
-        </div>
-      </header>
-
-      {/* CORE AVATAR AND VISUALS */}
-      <main className="relative z-10 flex-1 w-full max-w-4xl mx-auto flex flex-col items-center justify-between py-6">
-        
-        {/* Holographic Projection Screen Widget (if website opened) */}
-        <AnimatePresence>
-          {activeProjectorUrl && (
-            <div className="absolute inset-x-0 top-0 z-30 flex justify-center p-2">
-              <motion.div
-                initial={{ opacity: 0, y: -20, scale: 0.95 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -20, scale: 0.95 }}
-                className="flex items-center justify-between gap-4 p-3.5 rounded-2xl border border-indigo-500/20 bg-indigo-950/45 backdrop-blur-xl shadow-lg w-full max-w-md"
-              >
-                <div className="flex items-center gap-3 overflow-hidden text-left">
-                  <div className="p-2 ml-1 rounded-xl bg-indigo-500/20 text-indigo-300">
-                    <Globe size={18} />
+          {/* Holographic Projection Screen Widget (if website opened) */}
+          <AnimatePresence>
+            {activeProjectorUrl && (
+              <div className="absolute inset-x-0 top-0 z-30 flex justify-center p-2">
+                <motion.div
+                  initial={{ opacity: 0, y: -20, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -20, scale: 0.95 }}
+                  className="flex items-center justify-between gap-4 p-3.5 rounded-2xl border border-indigo-500/20 bg-indigo-950/45 backdrop-blur-xl shadow-lg w-full max-w-md"
+                >
+                  <div className="flex items-center gap-3 overflow-hidden text-left">
+                    <div className="p-2 ml-1 rounded-xl bg-indigo-500/20 text-indigo-300">
+                      <Globe size={18} />
+                    </div>
+                    <div className="overflow-hidden">
+                      <h4 className="text-xs font-bold font-mono tracking-wide text-indigo-200 uppercase">Holographic Projection Broadcast</h4>
+                      <p className="text-xs text-indigo-400 truncate max-w-[200px]">{activeProjectorUrl}</p>
+                    </div>
                   </div>
-                  <div className="overflow-hidden">
-                    <h4 className="text-xs font-bold font-mono tracking-wide text-indigo-200 uppercase">Holographic Projection Broadcast</h4>
-                    <p className="text-xs text-indigo-400 truncate max-w-[200px]">{activeProjectorUrl}</p>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => setActiveProjectorUrl(activeProjectorUrl)}
+                      className="p-2 rounded-xl bg-indigo-500 text-white hover:bg-indigo-400 transition"
+                      title="View Frame"
+                    >
+                      <Maximize2 size={14} />
+                    </button>
+                    <button
+                      onClick={() => setActiveProjectorUrl(null)}
+                      className="p-2 rounded-xl hover:bg-white/5 text-slate-400 hover:text-white transition"
+                    >
+                      <X size={14} />
+                    </button>
                   </div>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={() => setActiveProjectorUrl(activeProjectorUrl)}
-                    className="p-2 rounded-xl bg-indigo-500 text-white hover:bg-indigo-400 transition"
-                    title="View Frame"
+                </motion.div>
+              </div>
+            )}
+          </AnimatePresence>
+
+          {/* Space Spacer to avoid head area */}
+          <div className="h-10 sm:h-20" />
+
+          {/* Cinematic dialogue layer overlay - Smooth, delicate text transitions with soft focus blur */}
+          <div id="cinematic-subtitles" className="w-full max-w-3xl flex flex-col items-center justify-center text-center px-6 relative z-25 mt-auto mb-6 pointer-events-none min-h-[6rem]">
+            <AnimatePresence mode="wait">
+              {(() => {
+                const textType = modelCaption 
+                  ? "model" 
+                  : userCaption 
+                    ? "user" 
+                    : "status";
+
+                const activeText = modelCaption 
+                  ? modelCaption 
+                  : userCaption 
+                    ? userCaption 
+                    : state === "listening" 
+                      ? "I am listening. Speak freely..." 
+                      : state === "connecting" 
+                        ? "Materializing presence links..." 
+                        : "Connect memory core to awaken my voice.";
+
+                return (
+                  <motion.div
+                    key={textType}
+                    initial={{ opacity: 0, y: 15, filter: "blur(6px)" }}
+                    animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                    exit={{ opacity: 0, y: -15, filter: "blur(6px)" }}
+                    transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+                    className="flex flex-col items-center justify-center w-full"
                   >
-                    <Maximize2 size={14} />
-                  </button>
-                  <button
-                    onClick={() => setActiveProjectorUrl(null)}
-                    className="p-2 rounded-xl hover:bg-white/5 text-slate-400 hover:text-white transition"
+                    {textType === "model" && (
+                      <h2 className="text-xl sm:text-2xl font-light text-white leading-relaxed tracking-wide font-display max-w-2xl drop-shadow-[0_2px_20px_rgba(0,0,0,0.9)]">
+                        {activeText}
+                      </h2>
+                    )}
+
+                    {textType === "user" && (
+                      <p className="text-cyan-300 font-mono text-sm sm:text-base tracking-wider flex items-center justify-center gap-2 drop-shadow-[0_1px_10px_rgba(0,0,0,0.85)] font-medium">
+                        <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+                        <span>&ldquo;{activeText}&rdquo;</span>
+                      </p>
+                    )}
+
+                    {textType === "status" && (
+                      <span className="text-xs sm:text-sm uppercase tracking-[0.3em] font-medium text-white/30 font-sans tracking-widest drop-shadow-[0_1px_4px_rgba(0, 0, 0, 0.5)]">
+                        {activeText}
+                      </span>
+                    )}
+                  </motion.div>
+                );
+              })()}
+            </AnimatePresence>
+          </div>
+
+          {/* Interactive suggestions prompt guide */}
+          <AnimatePresence>
+            {showGuide && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                className="mt-6 p-5 rounded-2xl border border-white/10 bg-slate-900/85 backdrop-blur-2xl max-w-md text-left w-full absolute z-40 shadow-2xl"
+              >
+                <div className="flex items-center justify-between mb-3 text-white">
+                  <div className="flex items-center gap-1.5 font-display text-sm font-bold tracking-wide">
+                    <Compass size={16} className="text-indigo-400" />
+                    <span>PLAYFUL CORE SUGGESTIONS</span>
+                  </div>
+                  <button 
+                    onClick={() => setShowGuide(false)}
+                    className="text-slate-400 hover:text-white transition"
                   >
                     <X size={14} />
                   </button>
                 </div>
+                <p className="text-xs text-slate-400 mb-4 font-mono leading-relaxed">
+                  Bella is equipped with dynamic visual modules and standard text browser projectors. Here are clever triggers to try speaking aloud:
+                </p>
+                <div className="space-y-2 text-xs font-serif italic text-indigo-300">
+                  <div className="p-2.5 rounded-xl bg-white/5 border border-white/5 hover:bg-white/10 transition cursor-pointer font-sans normal-case text-slate-200">
+                    ⚡ &quot;Bella, change atmosphere of your core to crimson&quot; <span className="text-[10px] font-mono text-indigo-400 block mt-0.5 font-medium">Shifts theme color background</span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-white/5 border border-white/5 hover:bg-white/10 transition cursor-pointer font-sans normal-case text-slate-200">
+                    ⚡ &quot;Open youtube.com on my screen please&quot; <span className="text-[10px] font-mono text-indigo-400 block mt-0.5 font-medium">Invokes browser projector panel</span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-white/5 border border-white/5 hover:bg-white/10 transition cursor-pointer font-sans normal-case text-slate-200">
+                    ⚡ &quot;Tell me a witty joke and change background to gold&quot; <span className="text-[10px] font-mono text-indigo-400 block mt-0.5 font-medium">Combines tools & voice</span>
+                  </div>
+                </div>
               </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
+            )}
+          </AnimatePresence>
 
-        {/* Space Spacer to avoid head area */}
-        <div className="h-10 sm:h-20" />
+          {/* Global Error Banner */}
+          <AnimatePresence>
+            {errorText && (
+              <motion.div
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 15 }}
+                className="mt-6 flex items-start gap-3 p-4 rounded-2xl border border-rose-500/20 bg-rose-950/40 backdrop-blur-xl max-w-md w-full text-left"
+              >
+                <CircleAlert className="text-rose-400 shrink-0 mt-0.5" size={18} />
+                <div>
+                  <h4 className="text-xs font-bold uppercase tracking-widest text-rose-300 font-mono">Core Error Protocol</h4>
+                  <p className="text-xs text-rose-200 mt-1 leading-relaxed">{errorText}</p>
+                  <button
+                    onClick={() => setErrorText(null)}
+                    className="mt-2 text-[10px] font-bold text-rose-400 underline font-mono uppercase"
+                  >
+                    Dismiss Code
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-        {/* Cinematic dialogue layer overlay - Smooth, delicate text transitions with soft focus blur */}
-        <div id="cinematic-subtitles" className="w-full max-w-3xl flex flex-col items-center justify-center text-center px-6 relative z-25 mt-auto mb-6 pointer-events-none min-h-[6rem]">
-          <AnimatePresence mode="wait">
-            {(() => {
-              const textType = modelCaption 
-                ? "model" 
-                : userCaption 
-                  ? "user" 
-                  : "status";
+        </main>
+      )}
 
-              const activeText = modelCaption 
-                ? modelCaption 
-                : userCaption 
-                  ? userCaption 
-                  : state === "listening" 
-                    ? "I am listening. Speak freely..." 
-                    : state === "connecting" 
-                      ? "Materializing presence links..." 
-                      : "Connect memory core to awaken my voice.";
+      {/* FOOTER INTERFACE WITH WAVEFORM AND CONTROLS (Full stage only) */}
+      {!isMiniMode && (
+        <footer className="relative z-10 w-full max-w-2xl mx-auto flex flex-col items-center gap-5 mt-auto">
+          
+          {/* Dynamic Minimalist Waveform Visualizer */}
+          <div className="flex items-center justify-center gap-1 h-8 w-44">
+            {[12, 28, 16, 32, 20, 8].map((baseHeight, idx) => {
+              let heightFactor = 0.35;
+              if (state === "speaking") {
+                heightFactor = 0.35 + Math.sin(Date.now() * 0.02 + idx * 0.9) * 0.65;
+              } else if (state === "listening") {
+                heightFactor = 0.2 + Math.sin(Date.now() * 0.01 + idx * 0.5) * 0.4;
+              } else {
+                heightFactor = idx % 2 === 0 ? 0.25 : 0.12;
+              }
+              const calculatedHeight = Math.max(3, baseHeight * heightFactor);
 
               return (
-                <motion.div
-                  key={textType}
-                  initial={{ opacity: 0, y: 15, filter: "blur(6px)" }}
-                  animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                  exit={{ opacity: 0, y: -15, filter: "blur(6px)" }}
-                  transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-                  className="flex flex-col items-center justify-center w-full"
-                >
-                  {textType === "model" && (
-                    <h2 className="text-xl sm:text-2xl font-light text-white leading-relaxed tracking-wide font-display max-w-2xl drop-shadow-[0_2px_20px_rgba(0,0,0,0.9)]">
-                      {activeText}
-                    </h2>
-                  )}
-
-                  {textType === "user" && (
-                    <p className="text-cyan-300 font-mono text-sm sm:text-base tracking-wider flex items-center justify-center gap-2 drop-shadow-[0_1px_10px_rgba(0,0,0,0.85)] font-medium">
-                      <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
-                      <span>&ldquo;{activeText}&rdquo;</span>
-                    </p>
-                  )}
-
-                  {textType === "status" && (
-                    <span className="text-xs sm:text-sm uppercase tracking-[0.3em] font-medium text-white/30 font-sans tracking-widest drop-shadow-[0_1px_4px_rgba(0, 0, 0, 0.5)]">
-                      {activeText}
-                    </span>
-                  )}
-                </motion.div>
+                <div
+                  key={idx}
+                  className={`w-0.5 rounded-full transition-all duration-300 ${
+                    state === "speaking" ? "bg-purple-400" : state === "listening" ? "bg-cyan-400" : "bg-white/10"
+                  }`}
+                  style={{ height: `${calculatedHeight}px` }}
+                />
               );
-            })()}
-          </AnimatePresence>
-        </div>
+            })}
+          </div>
 
-        {/* Interactive suggestions prompt guide */}
-        <AnimatePresence>
-          {showGuide && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="mt-6 p-5 rounded-2xl border border-white/10 bg-slate-900/85 backdrop-blur-2xl max-w-md text-left w-full absolute z-40 shadow-2xl"
-            >
-              <div className="flex items-center justify-between mb-3 text-white">
-                <div className="flex items-center gap-1.5 font-display text-sm font-bold tracking-wide">
-                  <Compass size={16} className="text-indigo-400" />
-                  <span>PLAYFUL CORE SUGGESTIONS</span>
-                </div>
-                <button 
-                  onClick={() => setShowGuide(false)}
-                  className="text-slate-400 hover:text-white transition"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-              <p className="text-xs text-slate-400 mb-4 font-mono leading-relaxed">
-                Bella is equipped with dynamic visual modules and standard text browser projectors. Here are clever triggers to try speaking aloud:
-              </p>
-              <div className="space-y-2 text-xs font-serif italic text-indigo-300">
-                <div className="p-2.5 rounded-xl bg-white/5 border border-white/5 hover:bg-white/10 transition cursor-pointer font-sans normal-case text-slate-200">
-                  âš¡ &quot;Bella, change atmosphere of your core to crimson&quot; <span className="text-[10px] font-mono text-indigo-400 block mt-0.5 font-medium">Shifts theme color background</span>
-                </div>
-                <div className="p-2.5 rounded-xl bg-white/5 border border-white/5 hover:bg-white/10 transition cursor-pointer font-sans normal-case text-slate-200">
-                  âš¡ &quot;Open youtube.com on my screen please&quot; <span className="text-[10px] font-mono text-indigo-400 block mt-0.5 font-medium">Invokes browser projector panel</span>
-                </div>
-                <div className="p-2.5 rounded-xl bg-white/5 border border-white/5 hover:bg-white/10 transition cursor-pointer font-sans normal-case text-slate-200">
-                  âš¡ &quot;Tell me a witty joke and change background to gold&quot; <span className="text-[10px] font-mono text-indigo-400 block mt-0.5 font-medium">Combines tools & voice</span>
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Global Error Banner */}
-        <AnimatePresence>
-          {errorText && (
-            <motion.div
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 15 }}
-              className="mt-6 flex items-start gap-3 p-4 rounded-2xl border border-rose-500/20 bg-rose-950/40 backdrop-blur-xl max-w-md w-full text-left"
-            >
-              <CircleAlert className="text-rose-400 shrink-0 mt-0.5" size={18} />
-              <div>
-                <h4 className="text-xs font-bold uppercase tracking-widest text-rose-300 font-mono">Core Error Protocol</h4>
-                <p className="text-xs text-rose-200 mt-1 leading-relaxed">{errorText}</p>
-                <button
-                  onClick={() => setErrorText(null)}
-                  className="mt-2 text-[10px] font-bold text-rose-400 underline font-mono uppercase"
-                >
-                  Dismiss Code
-                </button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-      </main>
-
-      {/* FOOTER INTERFACE WITH WAVEFORM AND CONTROLS */}
-      <footer className="relative z-10 w-full max-w-2xl mx-auto flex flex-col items-center gap-5 mt-auto">
-        
-        {/* Dynamic Minimalist Waveform Visualizer */}
-        <div className="flex items-center justify-center gap-1 h-8 w-44">
-          {[12, 28, 16, 32, 20, 8].map((baseHeight, idx) => {
-            let heightFactor = 0.35;
-            if (state === "speaking") {
-              heightFactor = 0.35 + Math.sin(Date.now() * 0.02 + idx * 0.9) * 0.65;
-            } else if (state === "listening") {
-              heightFactor = 0.2 + Math.sin(Date.now() * 0.01 + idx * 0.5) * 0.4;
-            } else {
-              heightFactor = idx % 2 === 0 ? 0.25 : 0.12;
-            }
-            const calculatedHeight = Math.max(3, baseHeight * heightFactor);
-
-            return (
-              <div
-                key={idx}
-                className={`w-0.5 rounded-full transition-all duration-300 ${
-                  state === "speaking" ? "bg-purple-400" : state === "listening" ? "bg-cyan-400" : "bg-white/10"
-                }`}
-                style={{ height: `${calculatedHeight}px` }}
-              />
-            );
-          })}
-        </div>
-
-        {/* Glossy Beautiful Primary Connector Core Node */}
-        <div className="flex items-center justify-center relative mb-4">
-          <button 
-            onClick={handleToggleConnection}
-            className={`w-20 h-20 rounded-full flex items-center justify-center transition-all duration-500 cursor-pointer ${
-              state === "disconnected"
-                ? "bg-white/10 hover:bg-white/15 border border-white/15 text-white shadow-[0_0_20px_rgba(255,255,255,0.02)] hover:scale-105 active:scale-95"
-                : state === "listening"
-                ? "bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-400/80 text-cyan-200 shadow-[0_0_35px_rgba(34,211,238,0.3)] animate-pulse scale-105"
-                : state === "speaking"
-                ? "bg-purple-500/90 hover:bg-purple-600 border border-purple-400/95 text-white shadow-[0_0_35px_rgba(168,85,247,0.4)] scale-105"
-                : "bg-amber-600 border border-amber-300 text-white animate-spin"
-            }`}
-            title={state === "disconnected" ? "Awake Bella" : "Sleep core"}
-          >
-            {state === "disconnected" ? (
-              <Power className="opacity-80" size={24} />
-            ) : state === "connecting" ? (
-              <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            ) : state === "listening" ? (
-              <Mic size={24} className="text-cyan-200" />
-            ) : (
-              <Volume2 size={24} className="text-white" />
-            )}
-          </button>
-
-          {/* Quiet Reset Projection Anchor */}
-          {(activeProjectorUrl || errorText) && (
+          {/* Glossy Beautiful Primary Connector Core Node */}
+          <div className="flex items-center justify-center relative mb-4">
             <button 
-              onClick={() => {
-                if (activeProjectorUrl) setActiveProjectorUrl(null);
-                setErrorText(null);
-              }}
-              className="absolute right-[-60px] p-2 rounded-full hover:bg-white/5 text-slate-400 hover:text-white transition duration-150 cursor-pointer"
-              title="Reset Screen Broadcasts"
+              onClick={handleToggleConnection}
+              className={`w-20 h-20 rounded-full flex items-center justify-center transition-all duration-500 cursor-pointer ${
+                state === "disconnected"
+                  ? "bg-white/10 hover:bg-white/15 border border-white/15 text-white shadow-[0_0_20px_rgba(255,255,255,0.02)] hover:scale-105 active:scale-95"
+                : state === "listening"
+                  ? "bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-400/80 text-cyan-200 shadow-[0_0_35px_rgba(34,211,238,0.3)] animate-pulse scale-105"
+                  : state === "speaking"
+                  ? "bg-purple-500/90 hover:bg-purple-600 border border-purple-400/95 text-white shadow-[0_0_35px_rgba(168,85,247,0.4)] scale-105"
+                  : "bg-amber-600 border border-amber-300 text-white animate-spin"
+              }`}
+              title={state === "disconnected" ? "Awake Bella" : "Sleep core"}
             >
-              <X size={16} />
+              {state === "disconnected" ? (
+                <Power className="opacity-80" size={24} />
+              ) : state === "connecting" ? (
+                <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : state === "listening" ? (
+                <Mic size={24} className="text-cyan-200" />
+              ) : (
+                <Volume2 size={24} className="text-white" />
+              )}
             </button>
-          )}
-        </div>
 
-      </footer>
+            {/* Quiet Reset Projection Anchor */}
+            {(activeProjectorUrl || errorText) && (
+              <button 
+                onClick={() => {
+                  if (activeProjectorUrl) setActiveProjectorUrl(null);
+                  setErrorText(null);
+                }}
+                className="absolute right-[-60px] p-2 rounded-full hover:bg-white/5 text-slate-400 hover:text-white transition duration-150 cursor-pointer"
+                title="Reset Screen Broadcasts"
+              >
+                <X size={16} />
+              </button>
+            )}
+          </div>
+        </footer>
+      )}
 
       {/* Holographic Website frame projections */}
       <AnimatePresence>

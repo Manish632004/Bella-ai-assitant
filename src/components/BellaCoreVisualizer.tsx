@@ -289,8 +289,39 @@ export const BellaCoreVisualizer: React.FC<BellaCoreVisualizerProps> = ({
     };
   }, [session, state, themeColor, activeEmotion, characterState]);
 
+  const handlePointerDragStart = (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    // Prevent browser default drag / selection behavior so the OS
+    // doesn't interpret pointer movement as a window resize gesture.
+    e.preventDefault();
+    e.stopPropagation();
+
+    let lastScreenX = e.screenX;
+    let lastScreenY = e.screenY;
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      moveEvent.preventDefault();
+      const deltaX = moveEvent.screenX - lastScreenX;
+      const deltaY = moveEvent.screenY - lastScreenY;
+      lastScreenX = moveEvent.screenX;
+      lastScreenY = moveEvent.screenY;
+
+      if ((window as any)?.bella?.moveWindow) {
+        (window as any).bella.moveWindow(deltaX, deltaY);
+      }
+    };
+
+    const handlePointerUp = () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+  };
+
   return (
-    <div className={`relative w-full h-full flex items-center justify-center ${isMiniMode ? "pointer-events-none" : "overflow-hidden"}`}>
+    <div className={`relative w-full h-full flex items-center justify-center ${isMiniMode ? "pointer-events-auto" : "overflow-hidden"}`}>
       {/* 1. Behind Overlay / Atmospheric Backlight Glow (Z-index 0) - only in full stage mode */}
       {!isMiniMode && (
         <div className="absolute inset-0 bg-transparent flex items-center justify-center pointer-events-none z-0">
@@ -309,42 +340,21 @@ export const BellaCoreVisualizer: React.FC<BellaCoreVisualizerProps> = ({
       {/* 2. Character Videos state crossfade manager */}
       {isMiniMode ? (
         // FLOATING DRAGGABLE MINI COMPANION (PiP Mode)
-        <motion.div
-          drag
-          dragMomentum={false}
-          dragElastic={0.08}
-          whileDrag={{ scale: 1.06, cursor: "grabbing" }}
-          initial={{ opacity: 0, scale: 0.6, y: 40 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.6, y: 40 }}
-          transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-          className="fixed bottom-6 right-6 z-50 w-48 sm:w-56 aspect-[4/3] flex items-center justify-center cursor-grab active:cursor-grabbing select-none pointer-events-auto group"
+        <div
+          className={`fixed ${
+            (window as any)?.bella?.isDesktop 
+              ? "inset-0 w-full h-full" 
+              : "bottom-6 right-6 w-52 sm:w-60 aspect-[4/3]"
+          } z-50 flex items-center justify-center cursor-grab active:cursor-grabbing select-none pointer-events-auto`}
+          onPointerDown={handlePointerDragStart}
         >
-          {/* Subtle Ambient Floating Glow (Pure transparent, no box background) */}
-          <div className="absolute inset-2 rounded-full blur-2xl opacity-40 bg-cyan-500/20 pointer-events-none animate-pulse" />
-
-          {/* Draggable & Floating Controls Hover Overlay */}
-          <div className="absolute top-0 inset-x-0 flex items-center justify-between px-2 py-1 z-30 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-auto">
-            <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-black/60 backdrop-blur-md border border-white/10 text-[9px] font-mono text-cyan-300 font-bold uppercase tracking-wider">
-              <Move size={10} className="text-cyan-400" />
-              <span>DRAG</span>
-            </div>
-            {onToggleMiniMode && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleMiniMode();
-                }}
-                className="p-1.5 rounded-full bg-black/60 hover:bg-black/90 backdrop-blur-md border border-white/10 text-white/80 hover:text-white transition shadow-lg cursor-pointer"
-                title="Expand Bella Stage"
-              >
-                <Maximize2 size={11} />
-              </button>
-            )}
-          </div>
+          {/* Subtle Ambient Floating Glow (Pure transparent aura) */}
+          <div className="absolute inset-4 rounded-full blur-2xl opacity-40 bg-cyan-500/20 pointer-events-none animate-pulse" />
 
           {/* Active Status Pulse Dot */}
-          <div className="absolute bottom-1 right-3 z-30 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/60 backdrop-blur-md border border-white/10 text-[9px] font-mono text-white/80">
+          <div 
+            className="absolute bottom-2 right-3 z-50 flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-black/80 backdrop-blur-md border border-white/20 text-[9px] font-mono text-white/80 pointer-events-auto"
+          >
             <span className={`w-1.5 h-1.5 rounded-full ${
               characterState === "talking" ? "bg-purple-400 animate-ping" :
               characterState === "thinking" ? "bg-amber-400 animate-pulse" :
@@ -353,8 +363,12 @@ export const BellaCoreVisualizer: React.FC<BellaCoreVisualizerProps> = ({
             <span className="capitalize">{characterState}</span>
           </div>
 
-          {/* Character Video container with soft radial cutout */}
-          <div className="relative w-full h-full flex items-center justify-center overflow-hidden">
+          {/* Character Video container - grabbing anywhere on the character drags Bella */}
+          <div 
+            onDoubleClick={() => onToggleMiniMode && onToggleMiniMode()}
+            className="relative w-full h-full flex items-center justify-center overflow-hidden cursor-grab active:cursor-grabbing"
+            title="Drag anywhere to move Bella. Double-click or click Taskbar icon for Full Stage."
+          >
             {/* IDLE VIDEO */}
             <video
               ref={idleVideoRef}
@@ -407,7 +421,7 @@ export const BellaCoreVisualizer: React.FC<BellaCoreVisualizerProps> = ({
               onError={() => handleVideoError("talking")}
             />
           </div>
-        </motion.div>
+        </div>
       ) : (
         // FULL STAGE CHARACTER
         <div 

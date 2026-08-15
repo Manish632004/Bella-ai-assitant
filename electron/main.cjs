@@ -27,31 +27,96 @@ const SERVER_PORT = 3000;
 const SERVER_ORIGIN = `http://localhost:${SERVER_PORT}`;
 const SERVER_READY_TIMEOUT_MS = 40_000;
 
-let previousBounds = { width: 1280, height: 800 };
+let isMiniModeActive = false;
+let previousBounds = { x: 100, y: 100, width: 1280, height: 800 };
+let wasMaximized = false;
+
+function restoreFullScreenMode() {
+  if (!mainWindow) return;
+  isMiniModeActive = false;
+  mainWindow.setAlwaysOnTop(false);
+
+  // Remove the max-size lock BEFORE restoring bounds.
+  // On Windows setMaximumSize(0,0) does NOT clear the cap — use the full
+  // screen dimensions so the window can grow back to any size.
+  const { width: sw, height: sh } = screen.getPrimaryDisplay().workAreaSize;
+  mainWindow.setMaximumSize(sw, sh);
+  mainWindow.setResizable(true);
+  mainWindow.setMinimumSize(940, 600);
+
+  if (wasMaximized) {
+    // Restore to maximized state, not just bounds
+    mainWindow.setBounds(previousBounds, false);
+    mainWindow.maximize();
+  } else {
+    mainWindow.setBounds(previousBounds, true);
+  }
+  mainWindow.webContents.send('restore-full-mode');
+}
 
 ipcMain.on('toggle-mini-mode', (_event, enabled) => {
   if (!mainWindow) return;
   try {
+    isMiniModeActive = Boolean(enabled);
     if (enabled) {
+      wasMaximized = mainWindow.isMaximized();
+      if (wasMaximized) mainWindow.unmaximize();
       previousBounds = mainWindow.getBounds();
+
       const primaryDisplay = screen.getPrimaryDisplay();
       const { workArea } = primaryDisplay;
-      mainWindow.setMinimumSize(220, 220);
+
+      // Lock size: set min == max == 280 so OS can't resize at all
+      mainWindow.setResizable(false);
+      mainWindow.setMinimumSize(280, 280);
+      mainWindow.setMaximumSize(280, 280);
       mainWindow.setAlwaysOnTop(true, 'screen-saver');
       mainWindow.setBounds({
-        width: 320,
-        height: 320,
-        x: workArea.x + workArea.width - 340,
-        y: workArea.y + workArea.height - 350
+        width: 280,
+        height: 280,
+        x: workArea.x + workArea.width - 300,
+        y: workArea.y + workArea.height - 300
       }, true);
     } else {
-      mainWindow.setAlwaysOnTop(false);
-      mainWindow.setMinimumSize(940, 600);
-      mainWindow.setBounds(previousBounds, true);
+      restoreFullScreenMode();
     }
   } catch (err) {
     console.error('[Electron Mini Mode Error]:', err);
   }
+});
+
+ipcMain.on('move-window', (_event, { deltaX, deltaY }) => {
+  if (!mainWindow) return;
+  const bounds = mainWindow.getBounds();
+  if (isMiniModeActive) {
+    // Force exact 280x280 on every move frame so the OS can never resize
+    mainWindow.setBounds({
+      x: Math.round(bounds.x + deltaX),
+      y: Math.round(bounds.y + deltaY),
+      width: 280,
+      height: 280
+    });
+  } else {
+    mainWindow.setPosition(Math.round(bounds.x + deltaX), Math.round(bounds.y + deltaY));
+  }
+});
+
+// Window control handlers for frameless window
+ipcMain.on('window-minimize', () => {
+  if (mainWindow) mainWindow.minimize();
+});
+
+ipcMain.on('window-maximize', () => {
+  if (!mainWindow) return;
+  if (mainWindow.isMaximized()) {
+    mainWindow.unmaximize();
+  } else {
+    mainWindow.maximize();
+  }
+});
+
+ipcMain.on('window-close', () => {
+  if (mainWindow) mainWindow.close();
 });
 
 // In development we run from the repo root; when packaged the app files live in
@@ -83,8 +148,23 @@ if (!gotSingleInstanceLock) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.show();
       mainWindow.focus();
+      if (isMiniModeActive) {
+        restoreFullScreenMode();
+      }
     }
   });
+
+  app.on('activate', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+      if (isMiniModeActive) {
+        restoreFullScreenMode();
+      }
+    }
+  });
+
   app.whenReady().then(bootstrap);
 }
 
@@ -226,10 +306,12 @@ function createMainWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
-    minWidth: 940,
-    minHeight: 600,
+    minWidth: 220,
+    minHeight: 220,
     show: false, // revealed on ready-to-show to avoid a white flash
-    backgroundColor: '#0a0a0f',
+    frame: false, // removes invisible OS resize handles on transparent windows
+    transparent: true,
+    backgroundColor: '#00000000',
     autoHideMenuBar: true,
     title: 'BELLA',
     webPreferences: {
@@ -250,6 +332,19 @@ function createMainWindow() {
       return { action: 'deny' };
     }
     return { action: 'allow' };
+  });
+
+  mainWindow.on('minimize', (e) => {
+    if (isMiniModeActive) {
+      e.preventDefault();
+      restoreFullScreenMode();
+    }
+  });
+
+  mainWindow.on('restore', () => {
+    if (isMiniModeActive) {
+      restoreFullScreenMode();
+    }
   });
 
   mainWindow.once('ready-to-show', () => {

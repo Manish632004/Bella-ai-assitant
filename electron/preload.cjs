@@ -16,4 +16,10 @@ contextBridge.exposeInMainWorld('bella', {
   platform: process.platform,
   version: process.versions.electron,
   setMiniMode: (enabled) => ipcRenderer.send('toggle-mini-mode', enabled),
+  moveWindow: (deltaX, deltaY) => ipcRenderer.send('move-window', { deltaX, deltaY }),
+  onRestoreFullMode: (callback) => ipcRenderer.on('restore-full-mode', () => callback()),
+  // Window controls for frameless window
+  minimizeWindow: () => ipcRenderer.send('window-minimize'),
+  maximizeWindow: () => ipcRenderer.send('window-maximize'),
+  closeWindow: () => ipcRenderer.send('window-close'),
 });

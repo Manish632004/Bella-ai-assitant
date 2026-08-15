@@ -1860,6 +1860,11 @@ async function startServer() {
                     const agentResult = await callDesktopAgent(fc.name, fc.args as Record<string, unknown>);
 
                     if (agentResult.ok) {
+                      if (fc.name === "openApplication" || fc.name === "openWebsite" || fc.name === "searchYouTube") {
+                        try {
+                          clientWs.send(JSON.stringify({ type: "mini_mode", enabled: true }));
+                        } catch {}
+                      }
                       const output = agentResult.result ?? { result: "Done." };
                       session.sendToolResponse({
                         functionResponses: [{
