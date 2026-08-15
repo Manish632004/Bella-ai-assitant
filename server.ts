@@ -253,6 +253,11 @@ function launchAppNative(appName: string): Promise<{ ok: boolean; result?: unkno
       whatsapp: "whatsapp:",
       telegram: "tg://",
       obsidian: "obsidian://",
+      edge: "microsoft-edge:http://",
+      "microsoft edge": "microsoft-edge:http://",
+      msedge: "microsoft-edge:http://",
+      store: "ms-windows-store:",
+      "microsoft store": "ms-windows-store:",
     };
 
     if (uriSchemes[raw]) {
@@ -271,16 +276,22 @@ $knownExe = @{
   "spotify" = "$env:APPDATA\\Spotify\\Spotify.exe";
   "discord" = "$env:LOCALAPPDATA\\Discord\\Update.exe --processStart Discord.exe";
   "chrome" = "chrome";
+  "google chrome" = "chrome";
   "brave" = "brave";
   "edge" = "msedge";
+  "microsoft edge" = "msedge";
+  "msedge" = "msedge";
   "code" = "code";
   "vscode" = "code";
+  "vs code" = "code";
   "notepad" = "notepad";
   "calc" = "calc";
   "calculator" = "calc";
   "paint" = "mspaint";
   "explorer" = "explorer";
+  "file explorer" = "explorer";
   "taskmgr" = "taskmgr";
+  "task manager" = "taskmgr";
   "cmd" = "cmd";
   "terminal" = "wt";
   "powershell" = "powershell";
@@ -588,12 +599,18 @@ async function callDesktopAgent(
   tool: string,
   args: Record<string, unknown>,
 ): Promise<{ ok: boolean; result?: unknown; error?: string }> {
-  // If desktop agent is not running, check for native Windows fallback first
+  // Always execute high-priority native Windows operations first (apps, files, typing, search, folders)
+  const nativeDirect = await executeNativeFallback(tool, args);
+  if (nativeDirect && nativeDirect.ok) {
+    return nativeDirect;
+  }
+
+  // If desktop agent is not running, check for native Windows fallback
   if (!desktopAgentVerified) {
-    const fallback = await executeNativeFallback(tool, args);
-    if (fallback) return fallback;
+    if (nativeDirect) return nativeDirect;
     await ensureDesktopAgent();
   }
+
   try {
     logCommand(`EXECUTE ${tool} ${JSON.stringify(args)}`);
     const controller = new AbortController();
@@ -614,7 +631,12 @@ async function callDesktopAgent(
       logError(`AGENT_HTTP_${res.status} ${tool}: ${text.substring(0,200)}`);
       return { ok: false, error: `Desktop agent HTTP ${res.status}: ${text}` };
     }
-    return await res.json();
+    const data: any = await res.json();
+    if (!data || data.ok === false || data.error) {
+      const fallback = await executeNativeFallback(tool, args);
+      if (fallback && fallback.ok) return fallback;
+    }
+    return data;
   } catch (err: any) {
     desktopAgentVerified = false; // mark stale so next call retries the spawn
     const fallback = await executeNativeFallback(tool, args);
