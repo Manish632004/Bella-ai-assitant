@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { 
   X, 
   ExternalLink, 
@@ -94,17 +94,18 @@ export const BrowserAgent: React.FC<BrowserAgentProps> = ({
       const parsed = new URL(urlStr);
       const hostname = parsed.hostname.toLowerCase();
       
-      // Strict list of platforms that utilize frame-ancestor blocking or CSRF session triggers
-      if (hostname.includes("youtube.com") && !parsed.pathname.includes("/embed") && !parsed.pathname.includes("/results")) {
+      // Check if YouTube video or search results (embeddable)
+      const ytIdMatcher = urlStr.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/ ]{11})/i);
+      if (ytIdMatcher && ytIdMatcher[1]) {
+        return { restricted: false, reason: "" };
+      }
+      if (hostname.includes("youtube.com") && (parsed.pathname.includes("/results") || parsed.pathname.includes("/embed"))) {
+        return { restricted: false, reason: "" };
+      }
+      if (hostname.includes("youtube.com")) {
         return { 
           restricted: true, 
           reason: "YouTube utilizes 'X-Frame-Options: SAMEORIGIN' security headers and frame-busting service modules that prevent frame nesting." 
-        };
-      }
-      if (hostname.includes("youtu.be")) {
-        return { 
-          restricted: true, 
-          reason: "YouTu.be redirect urls enforce strict top-level browser navigation redirects." 
         };
       }
       if (hostname.includes("google.com") && !parsed.pathname.includes("/search")) {
@@ -289,26 +290,79 @@ export const BrowserAgent: React.FC<BrowserAgentProps> = ({
         switch (type) {
           case "browserOpen": {
             const destUrl = args.url || "https://google.com";
-            navigateToUrl(destUrl);
-            const cleanTitle = getCleanTitleFromUrl(destUrl);
-            callback({ result: `Opening ${cleanTitle} for you now. Let me check what is there.` });
+            const destParsed = (() => { try { return new URL(destUrl); } catch { return null; } })();
+
+            const isYouTubeHost = destParsed && destParsed.hostname.includes("youtube.com");
+            const hasVideoId    = isYouTubeHost && destParsed!.searchParams.has("v");
+            const isYouTubeRoot = isYouTubeHost && !hasVideoId &&
+              (destParsed!.pathname === "/" || destParsed!.pathname === "" ||
+               destParsed!.pathname === "/feed/subscriptions" || destParsed!.pathname === "/feed/trending");
+
+            if (isYouTubeRoot) {
+              // ── GUARDRAIL: youtube.com root is always blocked (iframe restriction).
+              // Route to search+autoplay instead. Use args.query if present, else
+              // grab any recognisable search terms from args.title / args.song / args.query.
+              const songHint = args.query || args.song || args.title || args.searchQuery || "";
+              if (songHint) {
+                const ytSearchUrl = `https://youtube.com/results?search_query=${encodeURIComponent(songHint)}`;
+                navigateToUrl(ytSearchUrl);
+                // Auto-play first result
+                setTimeout(() => {
+                  fetch(`/api/youtube-search?q=${encodeURIComponent(songHint)}`)
+                    .then(r => r.json())
+                    .then(data => {
+                      const firstVideo = data.results?.[0];
+                      if (firstVideo?.videoId) navigateToUrl(`https://youtube.com/watch?v=${firstVideo.videoId}`);
+                    }).catch(() => {});
+                }, 1800);
+                callback({ result: `Searching YouTube for "${songHint}" and auto-playing the top result.` });
+              } else {
+                // No query hint — just open the results search page so the user sees the UI
+                navigateToUrl("https://youtube.com/results?search_query=");
+                callback({ result: "Opened YouTube search panel. What song would you like me to play?" });
+              }
+            } else if (isYouTubeHost && hasVideoId) {
+              // Direct video URL — embed it directly
+              navigateToUrl(destUrl);
+              callback({ result: `Loading that YouTube video for you now.` });
+            } else {
+              navigateToUrl(destUrl);
+              const cleanTitle = getCleanTitleFromUrl(destUrl);
+              callback({ result: `Opening ${cleanTitle} for you now.` });
+            }
             break;
           }
           case "browserSearch": {
             const query = args.query;
             if (!query) throw new Error("Query text is required.");
-            
-            // Check if we are searching for YouTube videos
-            const isYtRelated = query.toLowerCase().includes("youtube") || query.toLowerCase().includes("video") || (activeTab && activeTab.url.includes("youtube"));
+
+            const isYtRelated = query.toLowerCase().includes("youtube") ||
+              query.toLowerCase().includes("video") ||
+              (activeTab && activeTab.url.includes("youtube"));
+
             if (isYtRelated) {
               const cleanYtQ = query.replace(/youtube|search|find|play/gi, "").trim();
-              const destUrl = `https://youtube.com/results?search_query=${encodeURIComponent(cleanYtQ || query)}`;
+              const searchTerm = cleanYtQ || query;
+              const destUrl = `https://youtube.com/results?search_query=${encodeURIComponent(searchTerm)}`;
               navigateToUrl(destUrl);
-              callback({ result: `Searching YouTube for "${cleanYtQ || query}" right away.` });
+              callback({ result: `Searching YouTube for "${searchTerm}" — loading the top result for you now.` });
+
+              // Auto-play first result: fetch results then navigate to first video
+              setTimeout(() => {
+                fetch(`/api/youtube-search?q=${encodeURIComponent(searchTerm)}`)
+                  .then(r => r.json())
+                  .then(data => {
+                    const firstVideo = data.results?.[0];
+                    if (firstVideo?.videoId) {
+                      navigateToUrl(`https://youtube.com/watch?v=${firstVideo.videoId}`);
+                    }
+                  })
+                  .catch(() => {/* silently fail — user sees results grid */});
+              }, 1800);
             } else {
               const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
               navigateToUrl(searchUrl);
-              callback({ result: `Searching for "${query}" right now. Working on it.` });
+              callback({ result: `Searching for "${query}" right now.` });
             }
             break;
           }

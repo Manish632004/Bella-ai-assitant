@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { BellaAudioSession, LiveState } from "./lib/audio";
 import { BellaCoreVisualizer, BellaEmotion } from "./components/BellaCoreVisualizer";
 import { BrowserAgent } from "./components/BrowserAgent";
@@ -399,9 +399,12 @@ export default function App() {
         if (browserTools.includes(name)) {
           // Bring up the Holographic Browser Controller if it is not active
           if (!activeProjectorUrl) {
-            let startingUrl = "https://youtube.com";
+            let startingUrl = "about:blank";
             if ((name === "browserOpen" || name === "openWebsite") && args.url) {
               startingUrl = args.url;
+            } else if (name === "browserSearch" && args.query) {
+              const q = args.query.replace(/youtube|search|find|play/gi, "").trim() || args.query;
+              startingUrl = `https://youtube.com/results?search_query=${encodeURIComponent(q)}`;
             }
             setActiveProjectorUrl(startingUrl);
           }

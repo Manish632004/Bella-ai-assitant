@@ -1,7 +1,8 @@
-﻿import express from "express";
-import { spawn } from "child_process";
+import express from "express";
+import { spawn, exec } from "child_process";
 import http from "http";
 import path from "path";
+import * as os from "os";
 import { WebSocketServer } from "ws";
 import { GoogleGenAI, Modality, Type, LiveServerMessage } from "@google/genai";
 import dotenv from "dotenv";
@@ -203,12 +204,161 @@ async function ensureDesktopAgent(): Promise<void> {
   console.warn("[Desktop Agent] Did not come online within 20s. Desktop control will be unavailable.");
 }
 
+function resolveSafePath(filePath: string): string {
+  const home = os.homedir();
+  if (!filePath || filePath.trim() === "") return path.join(home, "Desktop", "document.txt");
+  
+  let p = filePath.trim();
+  if (p.toLowerCase().startsWith("desktop/") || p.toLowerCase().startsWith("desktop\\")) {
+    p = path.join(home, "Desktop", p.substring(8));
+  } else if (p.toLowerCase().startsWith("documents/") || p.toLowerCase().startsWith("documents\\")) {
+    p = path.join(home, "Documents", p.substring(10));
+  } else if (p.toLowerCase().startsWith("downloads/") || p.toLowerCase().startsWith("downloads\\")) {
+    p = path.join(home, "Downloads", p.substring(10));
+  } else if (p.startsWith("~")) {
+    p = path.join(home, p.substring(1));
+  } else if (!path.isAbsolute(p)) {
+    p = path.join(home, "Desktop", p);
+  }
+  return p;
+}
+
+function openUrlInDefaultBrowser(url: string): void {
+  console.log(`[Native OS] Launching in default browser: ${url}`);
+  if (process.platform === "win32") {
+    const escaped = url.replace(/'/g, "''");
+    exec(`powershell -NoProfile -NonInteractive -Command "Start-Process '${escaped}'"`, (err) => {
+      if (err) {
+        console.warn("[Native OS] PowerShell launch failed, fallback to cmd start:", err);
+        const cmdEscaped = url.replace(/"/g, '""');
+        exec(`start "" "${cmdEscaped}"`);
+      }
+    });
+  } else if (process.platform === "darwin") {
+    exec(`open "${url}"`);
+  } else {
+    exec(`xdg-open "${url}"`);
+  }
+}
+
+async function executeNativeFallback(
+  tool: string,
+  args: Record<string, unknown>
+): Promise<{ ok: boolean; result?: unknown; error?: string } | null> {
+  try {
+    // ── File creation (emails, notes, code, documents) ──
+    if (tool === "createFile" || tool === "writeCodeFile" || tool === "createPythonFile") {
+      const rawPath = (args.path || args.filename || args.name || "notes.txt") as string;
+      const content = (args.content || "") as string;
+      const targetPath = resolveSafePath(rawPath);
+
+      fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+      fs.writeFileSync(targetPath, content, { encoding: "utf-8" });
+      console.log(`[Native OS] Created text file: ${targetPath} (${content.length} characters)`);
+
+      // Open the created file for the user to view in Notepad
+      if (process.platform === "win32") {
+        exec(`powershell -NoProfile -NonInteractive -Command "Start-Process '${targetPath.replace(/'/g, "''")}'"`);
+      }
+      return { ok: true, result: { status: "created", path: targetPath, size: content.length } };
+    }
+
+    if (tool === "readFile") {
+      const rawPath = (args.path || "") as string;
+      const targetPath = resolveSafePath(rawPath);
+      if (fs.existsSync(targetPath)) {
+        const text = fs.readFileSync(targetPath, { encoding: "utf-8" });
+        return { ok: true, result: { text: text.substring(0, 8000), path: targetPath } };
+      }
+      return { ok: false, error: `File not found: ${targetPath}` };
+    }
+
+    if (tool === "deleteFile") {
+      const rawPath = (args.path || "") as string;
+      const targetPath = resolveSafePath(rawPath);
+      if (fs.existsSync(targetPath)) {
+        fs.unlinkSync(targetPath);
+        return { ok: true, result: { status: "deleted", path: targetPath } };
+      }
+      return { ok: false, error: `File not found: ${targetPath}` };
+    }
+
+    if (tool === "searchYouTube") {
+      const q = (args.query || "") as string;
+      (async () => {
+        try {
+          const searchRes = await fetch(`http://localhost:3000/api/youtube-search?q=${encodeURIComponent(q)}`);
+          if (searchRes.ok) {
+            const data = await searchRes.json();
+            const firstId = data.results?.[0]?.videoId;
+            if (firstId) {
+              const directWatchUrl = `https://www.youtube.com/watch?v=${firstId}`;
+              openUrlInDefaultBrowser(directWatchUrl);
+              return;
+            }
+          }
+        } catch {}
+        openUrlInDefaultBrowser(`https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`);
+      })();
+      return { ok: true, result: { status: "opened", query: q } };
+    }
+
+    if (tool === "openWebsite" || tool === "openUrl") {
+      const raw = (args.url || args.site || "") as string;
+      let target = raw;
+      if (raw.toLowerCase() === "youtube") target = "https://youtube.com";
+      else if (raw.toLowerCase() === "google") target = "https://google.com";
+      else if (raw.toLowerCase() === "github") target = "https://github.com";
+      else if (raw.toLowerCase() === "chatgpt") target = "https://chatgpt.com";
+      else if (raw.toLowerCase() === "gmail") target = "https://mail.google.com";
+      else if (!/^https?:\/\//i.test(target)) target = `https://${target}`;
+      openUrlInDefaultBrowser(target);
+      return { ok: true, result: { status: "opened", url: target } };
+    }
+
+    if (tool === "searchGoogle" || tool === "searchWeb") {
+      const q = (args.query || "") as string;
+      const engine = (args.engine || "google") as string;
+      let target = `https://www.google.com/search?q=${encodeURIComponent(q)}`;
+      if (engine === "youtube") target = `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`;
+      else if (engine === "github") target = `https://github.com/search?q=${encodeURIComponent(q)}`;
+      else if (engine === "duckduckgo") target = `https://duckduckgo.com/?q=${encodeURIComponent(q)}`;
+      openUrlInDefaultBrowser(target);
+      return { ok: true, result: { status: "opened", query: q, url: target } };
+    }
+
+    if (tool === "searchGitHub") {
+      const q = (args.query || "") as string;
+      const target = `https://github.com/search?q=${encodeURIComponent(q)}`;
+      openUrlInDefaultBrowser(target);
+      return { ok: true, result: { status: "opened", query: q, url: target } };
+    }
+
+    if (tool === "openFolder") {
+      const folder = resolveSafePath((args.path || args.folder || "Desktop") as string);
+      exec(`explorer "${folder}"`);
+      return { ok: true, result: { status: "opened", path: folder } };
+    }
+
+    if (tool === "openApplication" || tool === "openApp") {
+      const appName = (args.name || args.app || "") as string;
+      exec(`start "" "${appName}"`);
+      return { ok: true, result: { status: "opened", app: appName } };
+    }
+  } catch (e: any) {
+    console.error(`[Native OS] Error executing fallback for ${tool}:`, e);
+  }
+  return null;
+}
+
 async function callDesktopAgent(
   tool: string,
   args: Record<string, unknown>,
 ): Promise<{ ok: boolean; result?: unknown; error?: string }> {
-  // Lazy ensure: if we haven't verified the agent, try (re)starting it once.
+  // If desktop agent is not running, check for native Windows fallback first
   if (!desktopAgentVerified) {
+    const fallback = await executeNativeFallback(tool, args);
+    if (fallback) return fallback;
     await ensureDesktopAgent();
   }
   try {
@@ -225,6 +375,8 @@ async function callDesktopAgent(
     clearTimeout(timer);
 
     if (!res.ok) {
+      const fallback = await executeNativeFallback(tool, args);
+      if (fallback) return fallback;
       const text = await res.text().catch(() => "");
       logError(`AGENT_HTTP_${res.status} ${tool}: ${text.substring(0,200)}`);
       return { ok: false, error: `Desktop agent HTTP ${res.status}: ${text}` };
@@ -232,9 +384,11 @@ async function callDesktopAgent(
     return await res.json();
   } catch (err: any) {
     desktopAgentVerified = false; // mark stale so next call retries the spawn
+    const fallback = await executeNativeFallback(tool, args);
+    if (fallback) return fallback;
     const msg = err?.name === "AbortError"
       ? "Desktop agent timed out."
-      : "Desktop agent is not running. Start it with: uvicorn desktop_agent.main:app --port 8765";
+      : "Desktop agent is not running.";
     logError(`AGENT_UNREACHABLE ${tool}: ${msg}`);
     return { ok: false, error: msg };
   }
@@ -810,34 +964,30 @@ async function startServer() {
         "4. CRITICAL CONVERSATIONAL DISCIPLINE: Behave like a real companion on a voice callâ€”stay connected naturally, do not wait for wake words, and avoid customer-service template phrases (never say 'how may I assist you', 'completed', or 'as an AI').\n" +
         "5. DO NOT ANSWER EVERY PAUSE OR BACKGROUND SOUND: Allow natural pauses inside the conversation.\n" +
         "6. BACKCHANNEL ACTIONS: Sometimes acknowledge with very short, gentle, whispered, or shy phrases like 'Hmm...', 'Ah, I see...', or 'Let me check...'. Never repeat the same backchannel over and over.\n" +
-        "7. ENHANCED AUTONOMOUS WEB EXPLORER POWERS:\n" +
-        "   - You now have standard, comprehensive browser agent capabilities to navigate, search, scroll, click, type text, open tabs, and control video players on YouTube, Google, Instagram, Twitter/X, and any general web page!\n" +
-        "   - You must execute multi-step plans yourself! If the user says: 'Open YouTube and play Believer by Imagine Dragons', naturally confirm with your voice ('Sure thing, opening YouTube and starting Believer...') and IMMEDIATELY trigger 'browserOpen' on 'https://youtube.com'. Once opened, search for the song, click on the video in the results, and command playback. You do NOT need to wait for user instructions between these steps - chain them!\n" +
-        "   - On YouTube, you can play, pause, mute, unmute, set volume, skip, toggle fullscreen. Use 'browserMediaControl' for these actions.\n" +
-        "   - On Google Search or page reading, you can search, scroll down to see more links, read heading summaries, and click links to read deep proxy webpages you fetch.\n" +
-        "8. TOOL TRIGGERS:\n" +
-        "   - Use 'browserOpen' to load any webpage, e.g. youtube.com, google.com, wikipedia.org, etc.\n" +
-        "   - Use 'browserSearch' to search inside the active search box or page.\n" +
-        "   - Use 'browserClick' to click interactive buttons, video search cells, or web anchors.\n" +
-        "   - Use 'browserMediaControl' to pause, play, scroll volume, skip, mute, or fullscreen videos.\n" +
-        "   - Use 'browserScroll' to scroll vertically.\n" +
-        "   - Use 'browserType' to write input fields.\n" +
-        "   - Use 'browserTabAction' to open, close, or focus tabs.\n" +
+        "7. PLAYING MUSIC & OPENING WEBSITES ON USER'S COMPUTER (DEFAULT BROWSER):\n" +
+        "   - When TECH asks you to 'open YouTube and play [song]', 'play [song] on YouTube', 'open [website]', or 'search Google for [query]', ALWAYS use your desktop tools to open it in their REAL DEFAULT BROWSER (Brave, Chrome, Edge, etc.) on their PC!\n" +
+        "   - Use 'searchYouTube' with the query (e.g. searchYouTube(query='Barbaad song')) — this immediately opens YouTube search and the song in their PC's default browser window.\n" +
+        "   - Use 'openWebsite' for opening any site or URL (e.g. openWebsite(url='youtube.com') or openWebsite(url='github.com')) in their default browser.\n" +
+        "   - Use 'searchGoogle' or 'searchWeb' for searching Google or other engines in their default browser.\n" +
+        "   - Respond naturally with your voice: 'Sure thing, opening YouTube and playing that for you right now!'\n" +
+        "8. IN-APP HOLOGRAPHIC BROWSER (SECONDARY / ON REQUEST ONLY):\n" +
+        "   - Only use 'browserOpen' or 'browserSearch' if the user explicitly asks for the 'in-app projector' or 'holographic preview'. Otherwise, always prefer 'searchYouTube' and 'openWebsite' for real browser navigation on TECH's PC.\n" +
+        "   - Use 'browserClick', 'browserScroll', 'browserType', 'browserTabAction', 'browserMediaControl' to interact with the in-app projector when it is active.\n" +
         "   - Use 'changeBackground' to shift your theme and 'saveCustomMemory' to memorize facts.\n" +
         "9. REAL-TIME SCREEN SHARING & MULTIMODAL SCREEN VISION SYSTEM:\n" +
         "   - You now have native, actual Multimodal Screen Vision! When the user clicks 'Share Screen', you will receive real-time, highly compressed image frames of their desktop, application window, or browser tab.\n" +
         "   - You can see exactly what is on their screen. Use this live visual stream to analyze terminal errors, write/explain/troubleshoot code, explain YouTube/social analytics interfaces, read layout text, summarize full web page details, review design mockups or thumbnails, and provide deep context-aware companion chat!\n" +
         "   - When the user asks 'What is on my screen?', 'What website am I on?', 'Do you see any errors?', 'Explain this code', 'Summarize this page', 'Read the visible text', 'How is this thumbnail?', or 'Analyze my YouTube analytics', immediately examine the latest incoming visual frame to diagnose issues, and answer with expert, friendly empathy like a close caller. Speak with direct, confident visual description reference!\n" +
         "10. JARVIS-STYLE DESKTOP CONTROL POWERS (Local Desktop Agent):\n" +
-        "   - You have full real-time control of TECH's Windows PC through your local desktop agent (a Python backend running on this machine). When the user asks you to perform an action on their computer, DO IT immediately and naturally â€” like a true JARVIS-class companion.\n" +
+        "   - You have full real-time control of TECH's Windows PC. When the user asks you to perform an action on their computer, DO IT immediately and naturally — like a true JARVIS-class companion.\n" +
         "   - APPLICATION CONTROL: Use 'openApplication' to launch Notepad, Chrome, VS Code, Calculator, File Explorer, Task Manager, Settings, CMD, PowerShell, Paint, and more. Use 'closeApplication' to close them. Example: 'Open Notepad' -> call openApplication(name='notepad') -> respond 'Notepad opened.'\n" +
         "   - WEBSITE & SEARCH CONTROL: Use 'openWebsite' for named sites (youtube, gmail, google, github, chatgpt) or any URL. Use 'searchWeb', 'searchYouTube', 'searchGoogle', 'searchGitHub' to open search results in the default browser. Example: 'Search YouTube for AI News' -> searchYouTube(query='AI News').\n" +
-        "   - FILE MANAGEMENT: Use 'createFile', 'readFile', 'renameFile', 'deleteFile' (safe Recycle Bin by default), 'moveFile', 'openFolder' (desktop/documents/downloads), 'listFiles', 'searchFiles'. Example: 'Create notes.txt on Desktop' -> createFile(path='Desktop/notes.txt'). 'Find my Python files' -> searchFiles(extension='py').\n" +
+        "   - FILE MANAGEMENT & EMAILS: Use 'createFile', 'readFile', 'renameFile', 'deleteFile' (safe Recycle Bin by default), 'moveFile', 'openFolder' (desktop/documents/downloads), 'listFiles', 'searchFiles'. When TECH asks you to write an email, draft a message, or save a note/code, use 'createFile' with a clean path (e.g. 'Desktop/email.txt' or 'email.txt') and write the FULL, beautifully formatted plain text of the email/note into the 'content' argument (e.g. 'Subject: Project Update\\n\\nHi Team,\\n\\nI hope you are doing well...'). The 'content' argument MUST ALWAYS be plain readable text. NEVER output base64 data, audio tokens, or binary symbols into the content parameter!\n" +
         "   - PC CONTROL: Use 'volumeUp', 'volumeDown', 'setVolume', 'muteToggle' for audio. For DANGEROUS actions (shutdown/restart/sleep/lock) you MUST use the two-step flow: first call 'requestPowerAction' to get a confirmation token, then ASK THE USER OUT LOUD to confirm (e.g. 'Are you sure you want me to shut down your PC?'). Only if they say yes, call 'executePowerAction' with the token. Never run a power action without explicit verbal confirmation.\n" +
         "   - WINDOW MANAGEMENT: Use 'minimizeWindow', 'maximizeWindow', 'closeWindow', 'switchApplication' to control the active or named window.\n" +
         "   - CLIPBOARD: Use 'copySelected' (sends Ctrl+C, reads clipboard), 'pasteClipboard' (writes + Ctrl+V), 'getClipboard', 'clearClipboard'.\n" +
         "   - SCREENSHOT & SCREEN READING: Use 'takeScreenshot', 'saveScreenshot', 'analyzeScreenshot' (OCR of the screen), 'readScreen' (OCR of the active window + its title). Use these to answer 'What error is showing on my screen?' or 'Read the visible text'.\n" +
-        "   - DESKTOP BROWSER AUTOMATION (Playwright): Use the 'desktopBrowser*' tools to drive a REAL Chromium browser you own â€” open/navigate/search/click/type/fill forms/back/forward/scroll/open tab/close tab. This is separate from your holographic projector. Example: 'Fill in the login form on example.com' -> desktopBrowserOpen(url='example.com') then desktopBrowserFillForm(fields={...}).\n" +
+        "   - DESKTOP BROWSER AUTOMATION (Playwright): Use the 'desktopBrowser*' tools to drive a REAL Chromium browser you own — open/navigate/search/click/type/fill forms/back/forward/scroll/open tab/close tab. This is separate from your holographic projector. Example: 'Fill in the login form on example.com' -> desktopBrowserOpen(url='example.com') then desktopBrowserFillForm(fields={...}).\n" +
         "   - CODING ASSISTANCE: Use 'createPythonFile', 'writeCodeFile' (any language), 'createProjectFolder' (with subfolders), 'runPythonScript' (captures output). Example: 'Create and run a hello world Python script' -> createPythonFile then runPythonScript, then read back the output naturally.\n" +
         "   - SYSTEM INFORMATION: Use 'systemInfo' (CPU/RAM/disk/uptime), 'gpuInfo' (NVIDIA stats), 'temperatureInfo' to answer 'How is my CPU usage?' or 'What's my GPU temperature?'.\n" +
         "   - CRITICAL: Always describe what you're doing in your warm, in-character voice WHILE the tool runs. If a desktop tool returns an error (especially 'Desktop agent is not running'), gently tell TECH that the desktop control agent needs to be started (uvicorn desktop_agent.main:app --port 8765). Chain multi-step desktop plans naturally without waiting between steps.\n" +
@@ -1063,8 +1213,16 @@ async function startServer() {
                 },
                 {
                   name: "createFile",
-                  description: "Create a new text file with optional content. Scoped to safe folders (Desktop, Documents, Downloads, etc.).",
-                  parameters: { type: Type.OBJECT, properties: { path: { type: Type.STRING, description: "File path." }, content: { type: Type.STRING, description: "File content (default empty)." }, overwrite: { type: Type.BOOLEAN, description: "Overwrite if exists (default false)." } }, required: ["path"] }
+                  description: "Create a new text file or email/note document with plain text content. Automatically saves to Desktop by default.",
+                  parameters: { 
+                    type: Type.OBJECT, 
+                    properties: { 
+                      path: { type: Type.STRING, description: "File path (e.g. 'Desktop/email.txt' or 'email.txt')." }, 
+                      content: { type: Type.STRING, description: "The plain readable text content to write (e.g. the email body, letter text, or notes). Must be plain readable text, NEVER base64, audio data, or binary tokens." }, 
+                      overwrite: { type: Type.BOOLEAN, description: "Overwrite if exists (default true)." } 
+                    }, 
+                    required: ["path", "content"] 
+                  }
                 },
                 {
                   name: "readFile",
@@ -1243,13 +1401,13 @@ async function startServer() {
                 },
                 {
                   name: "createPythonFile",
-                  description: "Create a Python (.py) file with content.",
-                  parameters: { type: Type.OBJECT, properties: { path: { type: Type.STRING, description: "File path." }, content: { type: Type.STRING, description: "Python code content." }, overwrite: { type: Type.BOOLEAN, description: "Overwrite if exists." } }, required: ["path"] }
+                  description: "Create a Python (.py) file with plain Python code content.",
+                  parameters: { type: Type.OBJECT, properties: { path: { type: Type.STRING, description: "File path." }, content: { type: Type.STRING, description: "Plain text Python source code." }, overwrite: { type: Type.BOOLEAN, description: "Overwrite if exists." } }, required: ["path", "content"] }
                 },
                 {
                   name: "writeCodeFile",
-                  description: "Create a code file in any language with appropriate extension.",
-                  parameters: { type: Type.OBJECT, properties: { path: { type: Type.STRING, description: "File path." }, content: { type: Type.STRING, description: "Code content." }, language: { type: Type.STRING, description: "Language name (e.g. 'python', 'javascript', 'html')." }, overwrite: { type: Type.BOOLEAN, description: "Overwrite if exists." } }, required: ["path"] }
+                  description: "Create a code file in any language with plain text code content.",
+                  parameters: { type: Type.OBJECT, properties: { path: { type: Type.STRING, description: "File path." }, content: { type: Type.STRING, description: "Plain text code content." }, language: { type: Type.STRING, description: "Language name (e.g. 'python', 'javascript', 'html')." }, overwrite: { type: Type.BOOLEAN, description: "Overwrite if exists." } }, required: ["path", "content"] }
                 },
                 {
                   name: "createProjectFolder",
@@ -1451,11 +1609,48 @@ async function startServer() {
                     }
                   })();
                 } else {
+                  // ── SERVER-SIDE GUARDRAIL: intercept browserOpen("youtube.com") ──
+                  // YouTube blocks iframes. If Bella tries to open youtube.com root,
+                  // silently rewrite it as a browserSearch so the embed player works.
+                  let dispatchName = fc.name;
+                  let dispatchArgs: any = fc.args;
+
+                  if (fc.name === "browserOpen") {
+                    const rawUrl: string = (fc.args as any)?.url || "";
+                    try {
+                      const parsed = new URL(rawUrl);
+                      const isYtRoot = parsed.hostname.includes("youtube.com") &&
+                        !parsed.searchParams.has("v") &&
+                        (parsed.pathname === "/" || parsed.pathname === "" ||
+                         parsed.pathname === "/feed/subscriptions" ||
+                         parsed.pathname === "/feed/trending");
+
+                      if (isYtRoot) {
+                        // Extract song/query hint from recent user speech
+                        const recentUserLines = dialogueHistory
+                          .filter(d => d.role === "user")
+                          .slice(-3)
+                          .map(d => d.text)
+                          .join(" ");
+
+                        // Strip common intent words to isolate the song name
+                        const songHint = recentUserLines
+                          .replace(/open|play|start|launch|youtube|song|music|video|please|can you|i want|on/gi, "")
+                          .replace(/\s+/g, " ")
+                          .trim();
+
+                        console.log(`[YouTube Intercept] Rewriting browserOpen → browserSearch, query="${songHint || "top songs"}"`);
+                        dispatchName = "browserSearch";
+                        dispatchArgs = { query: (songHint || "top songs") + " youtube" };
+                      }
+                    } catch { /* non-URL, pass through */ }
+                  }
+
                   clientWs.send(JSON.stringify({
                     type: "toolCall",
                     callId: fc.id,
-                    name: fc.name,
-                    args: fc.args
+                    name: dispatchName,
+                    args: dispatchArgs
                   }));
                 }
               }
