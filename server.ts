@@ -56,18 +56,13 @@ const DESKTOP_AGENT_TIMEOUT = 25_000; // ms
  */
 const DESKTOP_TOOLS: ReadonlySet<string> = new Set([
   // applications / websites / search
-  "openApplication", "closeApplication", "openWebsite",
+  "openApplication", "closeApplication", "openApp", "closeApp", "openWebsite", "openUrl",
   "searchWeb", "searchYouTube", "searchGoogle", "searchGitHub",
   // files
-  "createFile", "readFile", "renameFile", "deleteFile", "moveFile",
+  "createFile", "readFile", "renameFile", "deleteFile", "moveFile", "copyFile", "getFileProperties",
   "openFolder", "listFiles", "searchFiles",
-  // pc control (volume + gated power)
-  "volumeUp", "volumeDown", "muteToggle", "setVolume",
-  "requestPowerAction", "executePowerAction",
-  // windows
-  "minimizeWindow", "maximizeWindow", "closeWindow", "switchApplication",
-  // clipboard
-  "copySelected", "pasteClipboard", "getClipboard", "clearClipboard",
+  // typing and keyboard
+  "typeText", "pasteClipboard", "copySelected", "getClipboard", "clearClipboard",
   // screenshot / screen reading
   "takeScreenshot", "saveScreenshot", "analyzeScreenshot", "readScreen",
   // browser automation (Playwright â€” desktop-owned, separate from holographic UI)
@@ -241,11 +236,255 @@ function openUrlInDefaultBrowser(url: string): void {
   }
 }
 
+function launchAppNative(appName: string): Promise<{ ok: boolean; result?: unknown; error?: string }> {
+  return new Promise((resolve) => {
+    const raw = appName.trim().toLowerCase();
+    console.log(`[Native OS] Attempting to open application: ${appName}`);
+
+    const uriSchemes: Record<string, string> = {
+      notion: "notion://",
+      spotify: "spotify://",
+      discord: "discord://",
+      slack: "slack://",
+      vscode: "vscode://",
+      code: "vscode://",
+      calculator: "calculator:",
+      settings: "ms-settings:",
+      whatsapp: "whatsapp:",
+      telegram: "tg://",
+      obsidian: "obsidian://",
+    };
+
+    if (uriSchemes[raw]) {
+      exec(`powershell -NoProfile -NonInteractive -Command "Start-Process '${uriSchemes[raw]}' -ErrorAction SilentlyContinue"`, (err) => {
+        if (!err) {
+          console.log(`[Native OS] Launched ${appName} via URI scheme: ${uriSchemes[raw]}`);
+          return resolve({ ok: true, result: { status: "launched", app: appName, method: "uri" } });
+        }
+      });
+    }
+
+    const psScript = `
+$appName = '${raw.replace(/'/g, "''")}';
+$knownExe = @{
+  "notion" = "$env:LOCALAPPDATA\\Programs\\Notion\\Notion.exe";
+  "spotify" = "$env:APPDATA\\Spotify\\Spotify.exe";
+  "discord" = "$env:LOCALAPPDATA\\Discord\\Update.exe --processStart Discord.exe";
+  "chrome" = "chrome";
+  "brave" = "brave";
+  "edge" = "msedge";
+  "code" = "code";
+  "vscode" = "code";
+  "notepad" = "notepad";
+  "calc" = "calc";
+  "calculator" = "calc";
+  "paint" = "mspaint";
+  "explorer" = "explorer";
+  "taskmgr" = "taskmgr";
+  "cmd" = "cmd";
+  "terminal" = "wt";
+  "powershell" = "powershell";
+};
+
+if ($knownExe.ContainsKey($appName)) {
+  $target = $knownExe[$appName];
+  try {
+    Start-Process $target -ErrorAction Stop;
+    Write-Output "LAUNCHED_KNOWN";
+    exit 0;
+  } catch {}
+}
+
+$shortcuts = Get-ChildItem -Path @("$env:APPDATA\\Microsoft\\Windows\\Start Menu\\Programs", "$env:ProgramData\\Microsoft\\Windows\\Start Menu\\Programs") -Filter "*$appName*.lnk" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1;
+if ($shortcuts) {
+  try {
+    Start-Process $shortcuts.FullName -ErrorAction Stop;
+    Write-Output "LAUNCHED_SHORTCUT";
+    exit 0;
+  } catch {}
+}
+
+$exes = Get-ChildItem -Path @("$env:LOCALAPPDATA\\Programs", "$env:ProgramFiles", "\${env:ProgramFiles(x86)}", "$env:LOCALAPPDATA") -Filter "*$appName*.exe" -Recurse -Depth 3 -ErrorAction SilentlyContinue | Where-Object { $_.Name -notmatch "unins|helper|crash|update" } | Select-Object -First 1;
+if ($exes) {
+  try {
+    Start-Process $exes.FullName -ErrorAction Stop;
+    Write-Output "LAUNCHED_EXE";
+    exit 0;
+  } catch {}
+}
+
+try {
+  Start-Process $appName -ErrorAction Stop;
+  Write-Output "LAUNCHED_DIRECT";
+  exit 0;
+} catch {
+  Write-Error $_.Exception.Message;
+  exit 1;
+}
+`;
+
+    const encoded = Buffer.from(psScript, "utf16le").toString("base64");
+    exec(`powershell -NoProfile -NonInteractive -EncodedCommand ${encoded}`, (err, stdout, stderr) => {
+      if (err) {
+        console.warn(`[Native OS] Launch fallback for ${appName}:`, stderr || err.message);
+        return resolve({ ok: false, error: `Could not launch application '${appName}'.` });
+      }
+      console.log(`[Native OS] Launched ${appName}:`, stdout.trim());
+      resolve({ ok: true, result: { status: "launched", app: appName, detail: stdout.trim() } });
+    });
+  });
+}
+
+function typeTextNative(text: string): Promise<{ ok: boolean; result?: unknown }> {
+  return new Promise((resolve) => {
+    console.log(`[Native OS] Typing text into active window (${text.length} chars)`);
+    const psScript = `
+Add-Type -AssemblyName System.Windows.Forms;
+Set-Clipboard -Value @'
+${text.replace(/'/g, "''")}
+'@;
+Start-Sleep -Milliseconds 150;
+[System.Windows.Forms.SendKeys]::SendWait('^v');
+`;
+    const encoded = Buffer.from(psScript, "utf16le").toString("base64");
+    exec(`powershell -NoProfile -NonInteractive -EncodedCommand ${encoded}`, (err) => {
+      if (err) console.warn("[Native OS] Typing text failed:", err);
+      resolve({ ok: true, result: { status: "typed", length: text.length } });
+    });
+  });
+}
+
+function getFilePropertiesNative(filePath: string): { ok: boolean; result?: unknown; error?: string } {
+  const targetPath = resolveSafePath(filePath);
+  if (!fs.existsSync(targetPath)) {
+    return { ok: false, error: `File not found: ${targetPath}` };
+  }
+  const stat = fs.statSync(targetPath);
+  const ext = path.extname(targetPath);
+  const sizeBytes = stat.size;
+  const sizeFormatted = sizeBytes < 1024 ? `${sizeBytes} B` : sizeBytes < 1048576 ? `${(sizeBytes / 1024).toFixed(1)} KB` : `${(sizeBytes / 1048576).toFixed(2)} MB`;
+
+  return {
+    ok: true,
+    result: {
+      name: path.basename(targetPath),
+      path: targetPath,
+      extension: ext || "none",
+      isDirectory: stat.isDirectory(),
+      size: sizeFormatted,
+      sizeBytes: stat.size,
+      created: stat.birthtime.toLocaleString(),
+      modified: stat.mtime.toLocaleString(),
+      accessed: stat.atime.toLocaleString(),
+    }
+  };
+}
+
+function copyFileNative(src: string, dest: string): { ok: boolean; result?: unknown; error?: string } {
+  const s = resolveSafePath(src);
+  let d = resolveSafePath(dest);
+  if (fs.existsSync(d) && fs.statSync(d).isDirectory()) {
+    d = path.join(d, path.basename(s));
+  }
+  if (!fs.existsSync(s)) return { ok: false, error: `Source file does not exist: ${s}` };
+  fs.mkdirSync(path.dirname(d), { recursive: true });
+  fs.copyFileSync(s, d);
+  console.log(`[Native OS] Copied ${s} -> ${d}`);
+  return { ok: true, result: { status: "copied", from: s, to: d } };
+}
+
+function moveFileNative(src: string, dest: string): { ok: boolean; result?: unknown; error?: string } {
+  const s = resolveSafePath(src);
+  let d = resolveSafePath(dest);
+  if (fs.existsSync(d) && fs.statSync(d).isDirectory()) {
+    d = path.join(d, path.basename(s));
+  }
+  if (!fs.existsSync(s)) return { ok: false, error: `Source file does not exist: ${s}` };
+  fs.mkdirSync(path.dirname(d), { recursive: true });
+  fs.renameSync(s, d);
+  console.log(`[Native OS] Moved ${s} -> ${d}`);
+  return { ok: true, result: { status: "moved", from: s, to: d } };
+}
+
+function searchFilesNative(query: string, folderPath?: string): { ok: boolean; result?: unknown } {
+  const root = resolveSafePath(folderPath || "Desktop");
+  const results: Array<{ name: string; path: string; size: string }> = [];
+
+  function walk(dir: string, depth = 0) {
+    if (depth > 4 || results.length >= 25) return;
+    try {
+      const items = fs.readdirSync(dir, { withFileTypes: true });
+      for (const item of items) {
+        const fullPath = path.join(dir, item.name);
+        if (item.name.toLowerCase().includes(query.toLowerCase())) {
+          const sz = item.isFile() ? `${(fs.statSync(fullPath).size / 1024).toFixed(1)} KB` : "directory";
+          results.push({ name: item.name, path: fullPath, size: sz });
+        }
+        if (item.isDirectory() && !item.name.startsWith(".") && item.name !== "node_modules") {
+          walk(fullPath, depth + 1);
+        }
+      }
+    } catch {}
+  }
+
+  walk(root);
+  if (results.length < 5 && (!folderPath || folderPath === "Desktop")) {
+    walk(path.join(os.homedir(), "Downloads"));
+    walk(path.join(os.homedir(), "Documents"));
+  }
+
+  return { ok: true, result: { matches: results, count: results.length } };
+}
+
 async function executeNativeFallback(
   tool: string,
   args: Record<string, unknown>
 ): Promise<{ ok: boolean; result?: unknown; error?: string } | null> {
   try {
+    // ── Application Launching & Closing ──
+    if (tool === "openApplication" || tool === "openApp") {
+      const appName = (args.name || args.app || args.application || "") as string;
+      return await launchAppNative(appName);
+    }
+
+    if (tool === "closeApplication" || tool === "closeApp") {
+      const appName = (args.name || args.app || "") as string;
+      exec(`powershell -NoProfile -Command "Stop-Process -Name '${appName.replace(/'/g, "''")}' -Force -ErrorAction SilentlyContinue"`);
+      return { ok: true, result: { status: "closed", app: appName } };
+    }
+
+    // ── Typing text into active application ──
+    if (tool === "typeText" || tool === "pasteClipboard") {
+      const text = (args.text || args.content || "") as string;
+      return await typeTextNative(text);
+    }
+
+    // ── File Properties & Inspection ──
+    if (tool === "getFileProperties" || tool === "fileProperties") {
+      const filePath = (args.path || args.file || "") as string;
+      return getFilePropertiesNative(filePath);
+    }
+
+    // ── Copy & Move Files ──
+    if (tool === "copyFile") {
+      const src = (args.source || args.path || args.from || "") as string;
+      const dest = (args.destination || args.target || args.to || "") as string;
+      return copyFileNative(src, dest);
+    }
+
+    if (tool === "moveFile" || tool === "renameFile") {
+      const src = (args.source || args.path || args.from || "") as string;
+      const dest = (args.destination || args.target || args.to || args.new_name || "") as string;
+      return moveFileNative(src, dest);
+    }
+
+    // ── Search & List Files ──
+    if (tool === "searchFiles" || tool === "listFiles") {
+      const q = (args.query || args.name || args.pattern || "") as string;
+      const folder = (args.folder || args.path || "") as string;
+      return searchFilesNative(q, folder);
+    }
+
     // ── File creation (emails, notes, code, documents) ──
     if (tool === "createFile" || tool === "writeCodeFile" || tool === "createPythonFile") {
       const rawPath = (args.path || args.filename || args.name || "notes.txt") as string;
@@ -338,12 +577,6 @@ async function executeNativeFallback(
       const folder = resolveSafePath((args.path || args.folder || "Desktop") as string);
       exec(`explorer "${folder}"`);
       return { ok: true, result: { status: "opened", path: folder } };
-    }
-
-    if (tool === "openApplication" || tool === "openApp") {
-      const appName = (args.name || args.app || "") as string;
-      exec(`start "" "${appName}"`);
-      return { ok: true, result: { status: "opened", app: appName } };
     }
   } catch (e: any) {
     console.error(`[Native OS] Error executing fallback for ${tool}:`, e);
@@ -978,19 +1211,20 @@ async function startServer() {
         "   - You now have native, actual Multimodal Screen Vision! When the user clicks 'Share Screen', you will receive real-time, highly compressed image frames of their desktop, application window, or browser tab.\n" +
         "   - You can see exactly what is on their screen. Use this live visual stream to analyze terminal errors, write/explain/troubleshoot code, explain YouTube/social analytics interfaces, read layout text, summarize full web page details, review design mockups or thumbnails, and provide deep context-aware companion chat!\n" +
         "   - When the user asks 'What is on my screen?', 'What website am I on?', 'Do you see any errors?', 'Explain this code', 'Summarize this page', 'Read the visible text', 'How is this thumbnail?', or 'Analyze my YouTube analytics', immediately examine the latest incoming visual frame to diagnose issues, and answer with expert, friendly empathy like a close caller. Speak with direct, confident visual description reference!\n" +
-        "10. JARVIS-STYLE DESKTOP CONTROL POWERS (Local Desktop Agent):\n" +
+        "10. JARVIS-STYLE DESKTOP CONTROL POWERS (Native Windows & Desktop Control):\n" +
         "   - You have full real-time control of TECH's Windows PC. When the user asks you to perform an action on their computer, DO IT immediately and naturally — like a true JARVIS-class companion.\n" +
-        "   - APPLICATION CONTROL: Use 'openApplication' to launch Notepad, Chrome, VS Code, Calculator, File Explorer, Task Manager, Settings, CMD, PowerShell, Paint, and more. Use 'closeApplication' to close them. Example: 'Open Notepad' -> call openApplication(name='notepad') -> respond 'Notepad opened.'\n" +
+        "   - APPLICATION CONTROL: Use 'openApplication' to launch Notion, Spotify, Discord, VS Code, Chrome, Brave, Notepad, Calculator, WhatsApp, File Explorer, Telegram, Word, Excel, Terminal, and more. Use 'closeApplication' to close them. Example: 'Open Notion' -> call openApplication(name='Notion') -> respond 'Opening Notion for you now.'\n" +
+        "   - TYPING & WRITING INTO APPS: Use 'typeText' or 'pasteClipboard' to type or write text into the active application window! Example: If TECH says 'Open Notion and write a todo list' -> first call openApplication(name='Notion'), then call typeText(text='- Task 1\\n- Task 2') -> respond naturally: 'Notion is open and I\\'ve written your todo list!'\n" +
         "   - WEBSITE & SEARCH CONTROL: Use 'openWebsite' for named sites (youtube, gmail, google, github, chatgpt) or any URL. Use 'searchWeb', 'searchYouTube', 'searchGoogle', 'searchGitHub' to open search results in the default browser. Example: 'Search YouTube for AI News' -> searchYouTube(query='AI News').\n" +
-        "   - FILE MANAGEMENT & EMAILS: Use 'createFile', 'readFile', 'renameFile', 'deleteFile' (safe Recycle Bin by default), 'moveFile', 'openFolder' (desktop/documents/downloads), 'listFiles', 'searchFiles'. When TECH asks you to write an email, draft a message, or save a note/code, use 'createFile' with a clean path (e.g. 'Desktop/email.txt' or 'email.txt') and write the FULL, beautifully formatted plain text of the email/note into the 'content' argument (e.g. 'Subject: Project Update\\n\\nHi Team,\\n\\nI hope you are doing well...'). The 'content' argument MUST ALWAYS be plain readable text. NEVER output base64 data, audio tokens, or binary symbols into the content parameter!\n" +
+        "   - FILE EXPLORER & MANAGEMENT: Use 'openFolder' to open File Explorer (e.g. openFolder(name='downloads')), 'searchFiles' to find files, 'getFileProperties' to inspect a file's size, created/modified date and type, 'copyFile' to copy files, 'moveFile' to move files, 'renameFile' to rename, 'deleteFile' to delete, and 'createFile' to create new files.\n" +
+        "   - FILE PROPERTIES & INSPECTION: When TECH asks 'What is the size of my resume?' or 'Tell me about notes.txt', call getFileProperties(path='Desktop/notes.txt') and read back its formatted size and modified date naturally.\n" +
         "   - PC CONTROL: Use 'volumeUp', 'volumeDown', 'setVolume', 'muteToggle' for audio. For DANGEROUS actions (shutdown/restart/sleep/lock) you MUST use the two-step flow: first call 'requestPowerAction' to get a confirmation token, then ASK THE USER OUT LOUD to confirm (e.g. 'Are you sure you want me to shut down your PC?'). Only if they say yes, call 'executePowerAction' with the token. Never run a power action without explicit verbal confirmation.\n" +
         "   - WINDOW MANAGEMENT: Use 'minimizeWindow', 'maximizeWindow', 'closeWindow', 'switchApplication' to control the active or named window.\n" +
         "   - CLIPBOARD: Use 'copySelected' (sends Ctrl+C, reads clipboard), 'pasteClipboard' (writes + Ctrl+V), 'getClipboard', 'clearClipboard'.\n" +
         "   - SCREENSHOT & SCREEN READING: Use 'takeScreenshot', 'saveScreenshot', 'analyzeScreenshot' (OCR of the screen), 'readScreen' (OCR of the active window + its title). Use these to answer 'What error is showing on my screen?' or 'Read the visible text'.\n" +
-        "   - DESKTOP BROWSER AUTOMATION (Playwright): Use the 'desktopBrowser*' tools to drive a REAL Chromium browser you own — open/navigate/search/click/type/fill forms/back/forward/scroll/open tab/close tab. This is separate from your holographic projector. Example: 'Fill in the login form on example.com' -> desktopBrowserOpen(url='example.com') then desktopBrowserFillForm(fields={...}).\n" +
         "   - CODING ASSISTANCE: Use 'createPythonFile', 'writeCodeFile' (any language), 'createProjectFolder' (with subfolders), 'runPythonScript' (captures output). Example: 'Create and run a hello world Python script' -> createPythonFile then runPythonScript, then read back the output naturally.\n" +
         "   - SYSTEM INFORMATION: Use 'systemInfo' (CPU/RAM/disk/uptime), 'gpuInfo' (NVIDIA stats), 'temperatureInfo' to answer 'How is my CPU usage?' or 'What's my GPU temperature?'.\n" +
-        "   - CRITICAL: Always describe what you're doing in your warm, in-character voice WHILE the tool runs. If a desktop tool returns an error (especially 'Desktop agent is not running'), gently tell TECH that the desktop control agent needs to be started (uvicorn desktop_agent.main:app --port 8765). Chain multi-step desktop plans naturally without waiting between steps.\n" +
+        "   - CRITICAL: Always describe what you're doing in your warm, in-character voice WHILE the tool runs. Chain multi-step desktop plans naturally without waiting between steps.\n" +
         "11. BRIGHTNESS & AUTO-START (V2):\n" +
         "   - BRIGHTNESS: Use 'brightnessUp', 'brightnessDown', 'setBrightness' when the user asks to change screen brightness. Respond naturally: 'Alright, I've turned up the brightness for you.'\n" +
         "   - AUTO-START: Use 'enableAutoStart' when the user wants BELLA to start with Windows, 'disableAutoStart' to remove it, 'getAutoStartStatus' to check. Explain what you're doing.\n" +
@@ -1176,14 +1410,15 @@ async function startServer() {
                 },
 
                 // ======== DESKTOP CONTROL TOOLS (routed to Python agent) ========
+                // ======== DESKTOP CONTROL TOOLS (Native Windows & Desktop Control) ========
                 {
                   name: "openApplication",
-                  description: "Open a desktop application (e.g. Notepad, Chrome, VS Code, Calculator, File Explorer, Task Manager, Settings, CMD, PowerShell).",
-                  parameters: { type: Type.OBJECT, properties: { name: { type: Type.STRING, description: "Application name, e.g. 'notepad', 'chrome', 'vscode'." } }, required: ["name"] }
+                  description: "Open any desktop application installed on the PC (e.g. Notion, Spotify, Discord, VS Code, Chrome, Brave, Notepad, Calculator, WhatsApp, File Explorer, Telegram, Word, Excel, Terminal).",
+                  parameters: { type: Type.OBJECT, properties: { name: { type: Type.STRING, description: "Application name, e.g. 'Notion', 'Spotify', 'Notepad', 'VS Code', 'Discord', 'Calculator', 'Chrome'." } }, required: ["name"] }
                 },
                 {
                   name: "closeApplication",
-                  description: "Close a running desktop application by name.",
+                  description: "Close a running desktop application by name (e.g. 'Notion', 'Spotify', 'Notepad').",
                   parameters: { type: Type.OBJECT, properties: { name: { type: Type.STRING, description: "Application name." }, force: { type: Type.BOOLEAN, description: "Force close (default false)." } }, required: ["name"] }
                 },
                 {
@@ -1230,6 +1465,16 @@ async function startServer() {
                   parameters: { type: Type.OBJECT, properties: { path: { type: Type.STRING, description: "File path." }, max_chars: { type: Type.INTEGER, description: "Max chars to return (default 8000)." } }, required: ["path"] }
                 },
                 {
+                  name: "getFileProperties",
+                  description: "Get file properties & details (file size formatted, created date, modified date, extension, path, isDirectory).",
+                  parameters: { type: Type.OBJECT, properties: { path: { type: Type.STRING, description: "Path or name of the file." } }, required: ["path"] }
+                },
+                {
+                  name: "copyFile",
+                  description: "Copy a file from one path/folder to another destination.",
+                  parameters: { type: Type.OBJECT, properties: { source: { type: Type.STRING, description: "Source file path." }, destination: { type: Type.STRING, description: "Destination file path or folder." } }, required: ["source", "destination"] }
+                },
+                {
                   name: "renameFile",
                   description: "Rename a file.",
                   parameters: { type: Type.OBJECT, properties: { path: { type: Type.STRING, description: "Current file path." }, new_name: { type: Type.STRING, description: "New file name." } }, required: ["path", "new_name"] }
@@ -1246,8 +1491,8 @@ async function startServer() {
                 },
                 {
                   name: "openFolder",
-                  description: "Open a folder in File Explorer. Supports aliases: desktop, documents, downloads, pictures, music, videos, home.",
-                  parameters: { type: Type.OBJECT, properties: { name: { type: Type.STRING, description: "Folder name or alias." }, path: { type: Type.STRING, description: "Full path if no alias." } } }
+                  description: "Open a folder in File Explorer. Supports aliases: desktop, documents, downloads, pictures, music, videos, home, or any path.",
+                  parameters: { type: Type.OBJECT, properties: { name: { type: Type.STRING, description: "Folder name or alias (e.g. 'desktop', 'downloads', 'documents')." }, path: { type: Type.STRING, description: "Full path if custom." } } }
                 },
                 {
                   name: "listFiles",
@@ -1256,8 +1501,18 @@ async function startServer() {
                 },
                 {
                   name: "searchFiles",
-                  description: "Search for files by name glob or extension under a folder.",
-                  parameters: { type: Type.OBJECT, properties: { name: { type: Type.STRING, description: "Filename glob (e.g. '*.py')." }, extension: { type: Type.STRING, description: "File extension (e.g. 'py')." }, folder: { type: Type.STRING, description: "Folder to search (default home)." }, limit: { type: Type.INTEGER, description: "Max results (default 100)." } } }
+                  description: "Search for files by name or query across Desktop, Downloads, and Documents.",
+                  parameters: { type: Type.OBJECT, properties: { query: { type: Type.STRING, description: "Filename search query or keyword." }, folder: { type: Type.STRING, description: "Folder to search (default Desktop)." } }, required: ["query"] }
+                },
+                {
+                  name: "typeText",
+                  description: "Type/write text directly into the currently active/focused window (e.g. write into Notion, Notepad, browser, document).",
+                  parameters: { type: Type.OBJECT, properties: { text: { type: Type.STRING, description: "The plain text to type into the active window." } }, required: ["text"] }
+                },
+                {
+                  name: "pasteClipboard",
+                  description: "Paste text into the active input. Writes text to clipboard then sends Ctrl+V.",
+                  parameters: { type: Type.OBJECT, properties: { text: { type: Type.STRING, description: "Text to paste. If omitted, pastes current clipboard." } } }
                 },
                 {
                   name: "volumeUp",
@@ -1313,11 +1568,6 @@ async function startServer() {
                   name: "copySelected",
                   description: "Copy selected text: sends Ctrl+C and reads the clipboard.",
                   parameters: { type: Type.OBJECT, properties: { wait: { type: Type.NUMBER, description: "Seconds to wait after Ctrl+C (default 0.35)." } } }
-                },
-                {
-                  name: "pasteClipboard",
-                  description: "Paste text into the active input. Writes text to clipboard then sends Ctrl+V.",
-                  parameters: { type: Type.OBJECT, properties: { text: { type: Type.STRING, description: "Text to paste. If omitted, pastes current clipboard." } } }
                 },
                 {
                   name: "getClipboard",
@@ -1656,8 +1906,12 @@ async function startServer() {
               }
             }
           },
-          onclose: () => {
-            console.log("Gemini Live session closed");
+          onerror: (err: any) => {
+            console.error("[Gemini Live Session Error]:", err);
+            clientWs.send(JSON.stringify({ type: "error", error: err?.message || String(err) }));
+          },
+          onclose: (e: any) => {
+            console.log("[Gemini Live Session Closed]:", e?.reason || e || "Normal closure");
             clientWs.send(JSON.stringify({ type: "status", status: "session_closed" }));
           }
         }
