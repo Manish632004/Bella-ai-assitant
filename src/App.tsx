@@ -684,81 +684,75 @@ export default function App() {
         />
       </div>
 
-      {/* FULL STAGE HEADER SECTION */}
+      {/* FULL STAGE FLOATING GLASS NAVBAR */}
       {!isMiniMode && (
-        <header className="relative z-30 flex items-center justify-between w-full max-w-5xl mx-auto select-none">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold tracking-[0.4em] text-white/50 uppercase font-sans">
-              Bella
-            </span>
-            <div className={`w-1.5 h-1.5 rounded-full ${
-              state === "listening" || state === "speaking" 
-                ? "bg-cyan-400" 
-                : "bg-white/10"
-            }`} />
-          </div>
+        <header className="relative z-30 w-full max-w-4xl mx-auto select-none">
+          <div className="flex items-center justify-between px-5 py-2.5 rounded-2xl bg-white/[0.03] backdrop-blur-2xl border border-white/[0.08] shadow-[0_8px_32px_0_rgba(0,0,0,0.37),inset_0_1px_1px_0_rgba(255,255,255,0.08)]">
+            {/* Left Brand & Live State Badge */}
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2.5 px-3 py-1 rounded-full bg-white/[0.04] border border-white/[0.06]">
+                <span className="text-xs font-semibold tracking-[0.35em] text-white/70 uppercase font-mono">
+                  BELLA
+                </span>
+                <span className="relative flex h-2 w-2">
+                  <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                    state === "speaking" ? "bg-purple-400" :
+                    state === "listening" ? "bg-cyan-400" :
+                    state === "connecting" ? "bg-amber-400" : "hidden"
+                  }`} />
+                  <span className={`relative inline-flex rounded-full h-2 w-2 ${
+                    state === "speaking" ? "bg-purple-400" :
+                    state === "listening" ? "bg-cyan-400" :
+                    state === "connecting" ? "bg-amber-400" : "bg-white/20"
+                  }`} />
+                </span>
+              </div>
+            </div>
 
-          <div className="flex items-center gap-5">
-            {/* Float / Stage mode toggler button */}
-            <button
-              onClick={() => setIsMiniMode(!isMiniMode)}
-              className={`flex items-center gap-1.5 transition text-xs font-mono tracking-widest cursor-pointer ${
-                isMiniMode
-                  ? "text-cyan-400 opacity-100 font-semibold"
-                  : "opacity-25 hover:opacity-100 text-white"
-              }`}
-              title={isMiniMode ? "Expand to Full Stage" : "Float Mini Character"}
-            >
-              <PictureInPicture2 size={14} />
-              <span>{isMiniMode ? "EXPAND" : "FLOAT"}</span>
-            </button>
+            {/* Right Action Glass Pill Buttons */}
+            <div className="flex items-center gap-2">
+              {/* Float / Mini Mode Button */}
+              <button
+                onClick={() => setIsMiniMode(!isMiniMode)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-[11px] font-mono tracking-wider transition-all duration-200 cursor-pointer ${
+                  isMiniMode
+                    ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.3)] font-semibold"
+                    : "bg-white/[0.03] hover:bg-white/[0.08] text-white/60 hover:text-white border-white/[0.06] hover:border-white/[0.15]"
+                }`}
+                title={isMiniMode ? "Expand to Full Stage" : "Float Mini Companion"}
+              >
+                <PictureInPicture2 size={13} className="text-cyan-400/80" />
+                <span>{isMiniMode ? "EXPAND" : "FLOAT"}</span>
+              </button>
 
-            {/* Faint utilities hidden in margin */}
-            <button
-              onClick={() => setShowGuide(!showGuide)}
-              className="flex items-center gap-1 opacity-25 hover:opacity-100 text-white transition text-xs font-mono tracking-widest cursor-pointer"
-              title="Sway Themes and Info"
-            >
-              <Compass size={14} />
-              <span className="hidden sm:inline">TOPICS</span>
-            </button>
-            
-            <button 
-              onClick={() => setShowMemoryDashboard(!showMemoryDashboard)}
-              className="flex items-center gap-1 opacity-25 hover:opacity-100 text-white transition text-xs font-mono tracking-widest cursor-pointer"
-              title="Recollections Database"
-            >
-              <Brain size={14} />
-              <span className="hidden sm:inline">RECALLS</span>
-            </button>
+              {/* Real-time Screen Sharing Button */}
+              <button 
+                onClick={isScreenSharing ? stopScreenSharing : startScreenSharing}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-[11px] font-mono tracking-wider transition-all duration-200 cursor-pointer ${
+                  isScreenSharing 
+                    ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-[0_0_12px_rgba(16,185,129,0.3)] font-semibold" 
+                    : "bg-white/[0.03] hover:bg-white/[0.08] text-white/60 hover:text-white border-white/[0.06] hover:border-white/[0.15]"
+                }`}
+                title="Share Screen with Bella"
+              >
+                <Monitor size={13} className={isScreenSharing && !isScreenSharingPaused ? "animate-pulse text-emerald-400" : "text-white/40"} />
+                <span>{isScreenSharing ? "SHARING" : "SHARE SCREEN"}</span>
+              </button>
 
-            {/* Real-time screen sharing toggler button */}
-            <button 
-              onClick={isScreenSharing ? stopScreenSharing : startScreenSharing}
-              className={`flex items-center gap-1.5 transition text-xs font-mono tracking-widest cursor-pointer ${
-                isScreenSharing 
-                  ? "text-cyan-400 opacity-100 font-semibold" 
-                  : "opacity-25 hover:opacity-100 text-white"
-              }`}
-              title="Share Screen with Bella"
-            >
-              <Monitor size={14} className={isScreenSharing && !isScreenSharingPaused ? "animate-pulse text-cyan-400" : ""} />
-              <span>{isScreenSharing ? "SHARING" : "SHARE SCREEN"}</span>
-            </button>
-
-            {/* V2: Settings toggler button */}
-            <button
-              onClick={() => setShowSettings(!showSettings)}
-              className={`flex items-center gap-1.5 transition text-xs font-mono tracking-widest cursor-pointer ${
-                showSettings
-                  ? "text-cyan-400 opacity-100 font-semibold"
-                  : "opacity-25 hover:opacity-100 text-white"
-              }`}
-              title="Bella Configuration"
-            >
-              <SettingsIcon size={14} className={showSettings ? "animate-spin [animation-duration:6s]" : ""} />
-              <span>SETTINGS</span>
-            </button>
+              {/* Settings Configuration Button */}
+              <button
+                onClick={() => setShowSettings(!showSettings)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-[11px] font-mono tracking-wider transition-all duration-200 cursor-pointer ${
+                  showSettings
+                    ? "bg-indigo-500/20 text-indigo-300 border-indigo-500/40 shadow-[0_0_12px_rgba(99,102,241,0.3)] font-semibold"
+                    : "bg-white/[0.03] hover:bg-white/[0.08] text-white/60 hover:text-white border-white/[0.06] hover:border-white/[0.15]"
+                }`}
+                title="Bella Configuration"
+              >
+                <SettingsIcon size={13} className={showSettings ? "animate-spin [animation-duration:6s] text-indigo-400" : "text-white/40"} />
+                <span>SETTINGS</span>
+              </button>
+            </div>
           </div>
         </header>
       )}
