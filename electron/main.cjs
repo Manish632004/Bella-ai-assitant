@@ -16,7 +16,7 @@
 
 'use strict';
 
-const { app, BrowserWindow, Menu, shell, dialog, ipcMain, screen } = require('electron');
+const { app, BrowserWindow, Menu, shell, dialog, ipcMain, screen, desktopCapturer, session } = require('electron');
 const path = require('path');
 const http = require('http');
 const { spawn } = require('child_process');
@@ -117,6 +117,24 @@ ipcMain.on('window-maximize', () => {
 
 ipcMain.on('window-close', () => {
   if (mainWindow) mainWindow.close();
+});
+
+// IPC Handler to query screen and window capture sources
+ipcMain.handle('get-desktop-sources', async () => {
+  try {
+    const sources = await desktopCapturer.getSources({
+      types: ['screen', 'window'],
+      thumbnailSize: { width: 0, height: 0 }
+    });
+    return sources.map((s) => ({
+      id: s.id,
+      name: s.name,
+      display_id: s.display_id
+    }));
+  } catch (err) {
+    console.error('[desktopCapturer Error]:', err);
+    return [];
+  }
 });
 
 // In development we run from the repo root; when packaged the app files live in
@@ -363,6 +381,31 @@ function createMainWindow() {
 // ---------------------------------------------------------------------------
 async function bootstrap() {
   app.setAppUserModelId('com.bella.desktop');
+
+  // Configure Electron session handlers for screen sharing & media access
+  session.defaultSession.setDisplayMediaRequestHandler((_request, callback) => {
+    desktopCapturer.getSources({ types: ['screen', 'window'] }).then((sources) => {
+      // Pick the primary screen or first available display source
+      const primary = sources.find(s => s.id.startsWith('screen')) || sources[0];
+      if (primary) {
+        callback({ video: primary });
+      } else {
+        callback({});
+      }
+    }).catch((err) => {
+      console.error('[DisplayMedia Handler Error]:', err);
+      callback({});
+    });
+  });
+
+  session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
+    callback(true);
+  });
+
+  session.defaultSession.setPermissionCheckHandler(() => {
+    return true;
+  });
+
   createSplashWindow();
 
   try {

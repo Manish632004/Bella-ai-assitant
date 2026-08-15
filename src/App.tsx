@@ -128,14 +128,48 @@ export default function App() {
   const startScreenSharing = async () => {
     setErrorText(null);
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: {
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          frameRate: { ideal: 5 }
-        },
-        audio: false
-      });
+      let stream: MediaStream | null = null;
+
+      // In Electron desktop environment, try standard getDisplayMedia or desktopSources fallback
+      if (navigator.mediaDevices && typeof navigator.mediaDevices.getDisplayMedia === "function") {
+        try {
+          stream = await navigator.mediaDevices.getDisplayMedia({
+            video: {
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+              frameRate: { ideal: 5 }
+            },
+            audio: false
+          });
+        } catch (displayMediaErr: any) {
+          console.warn("[Screen Sharing] getDisplayMedia fallback check:", displayMediaErr);
+        }
+      }
+
+      // If getDisplayMedia was not available or threw unsupported, fallback to desktopSources via getUserMedia in Electron
+      if (!stream && (window as any)?.bella?.isDesktop && (window as any)?.bella?.getDesktopSources) {
+        const sources = await (window as any).bella.getDesktopSources();
+        const primarySource = sources?.[0];
+        if (primarySource) {
+          stream = await (navigator.mediaDevices as any).getUserMedia({
+            audio: false,
+            video: {
+              mandatory: {
+                chromeMediaSource: 'desktop',
+                chromeMediaSourceId: primarySource.id,
+                minWidth: 1280,
+                maxWidth: 1920,
+                maxHeight: 1080,
+                maxFrameRate: 5,
+              }
+            }
+          });
+        }
+      }
+
+      if (!stream) {
+        throw new Error("Unable to capture screen on this platform.");
+      }
 
       screenStreamRef.current = stream;
 
@@ -150,9 +184,12 @@ export default function App() {
       setIsScreenSharingPaused(false);
 
       // Stop handling when native stop sharing bar button ends
-      stream.getVideoTracks()[0].onended = () => {
-        stopScreenSharing();
-      };
+      const videoTrack = stream.getVideoTracks()[0];
+      if (videoTrack) {
+        videoTrack.onended = () => {
+          stopScreenSharing();
+        };
+      }
 
       // Set up frame capture interval (one frame every 2 seconds is highly robust, preventing overload)
       if (screenIntervalRef.current) {
@@ -594,12 +631,15 @@ export default function App() {
       {/* Custom title bar for frameless window (desktop only, full mode only) */}
       {!isMiniMode && (window as any)?.bella?.isDesktop && (
         <div
-          className="absolute top-0 left-0 right-0 z-[999] flex items-center justify-between h-9 select-none"
+          className="absolute top-0 left-0 right-0 z-[999] flex items-center justify-between h-10 select-none backdrop-blur-xl bg-white/[0.03] border-b border-white/[0.06] shadow-[0_1px_12px_rgba(0,0,0,0.3)]"
           style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
         >
-          {/* Left side - app title */}
-          <div className="flex items-center gap-2 pl-3 text-[10px] font-mono tracking-[0.3em] text-white/20 uppercase">
-            BELLA
+          {/* Left side - app title with subtle glass accent */}
+          <div className="flex items-center gap-2.5 pl-4">
+            <div className="w-2 h-2 rounded-full bg-gradient-to-br from-cyan-400/80 to-indigo-500/80 shadow-[0_0_6px_rgba(99,102,241,0.4)]" />
+            <span className="text-[10px] font-semibold tracking-[0.35em] text-white/30 uppercase font-mono">
+              BELLA
+            </span>
           </div>
           {/* Right side - window controls (no-drag so buttons work) */}
           <div
@@ -608,21 +648,21 @@ export default function App() {
           >
             <button
               onClick={() => (window as any).bella.minimizeWindow()}
-              className="h-full px-3.5 flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white/80 transition cursor-pointer"
+              className="h-full px-4 flex items-center justify-center hover:bg-white/[0.08] text-white/30 hover:text-white/70 transition-all duration-200 cursor-pointer"
               title="Minimize"
             >
               <Minus size={13} />
             </button>
             <button
               onClick={() => (window as any).bella.maximizeWindow()}
-              className="h-full px-3.5 flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white/80 transition cursor-pointer"
+              className="h-full px-4 flex items-center justify-center hover:bg-white/[0.08] text-white/30 hover:text-white/70 transition-all duration-200 cursor-pointer"
               title="Maximize"
             >
               <Maximize2 size={11} />
             </button>
             <button
               onClick={() => (window as any).bella.closeWindow()}
-              className="h-full px-3.5 flex items-center justify-center hover:bg-red-500/80 text-white/40 hover:text-white transition cursor-pointer"
+              className="h-full px-4 flex items-center justify-center hover:bg-red-500/60 text-white/30 hover:text-white transition-all duration-200 cursor-pointer rounded-tr-none"
               title="Close"
             >
               <X size={13} />
