@@ -249,21 +249,93 @@ function resolveSafePath(filePath: string): string {
   return p;
 }
 
+const KNOWN_WEB_SITES: Record<string, string> = {
+  youtube: "https://www.youtube.com",
+  gmail: "https://mail.google.com",
+  google: "https://www.google.com",
+  github: "https://github.com",
+  chatgpt: "https://chatgpt.com",
+  openai: "https://chatgpt.com",
+  claude: "https://claude.ai",
+  wikipedia: "https://www.wikipedia.org",
+  wiki: "https://www.wikipedia.org",
+  facebook: "https://www.facebook.com",
+  fb: "https://www.facebook.com",
+  instagram: "https://www.instagram.com",
+  insta: "https://www.instagram.com",
+  twitter: "https://x.com",
+  x: "https://x.com",
+  reddit: "https://www.reddit.com",
+  linkedin: "https://www.linkedin.com",
+  netflix: "https://www.netflix.com",
+  amazon: "https://www.amazon.com",
+  spotify: "https://open.spotify.com",
+  twitch: "https://www.twitch.tv",
+  tiktok: "https://www.tiktok.com",
+  pinterest: "https://www.pinterest.com",
+  quora: "https://www.quora.com",
+  medium: "https://medium.com",
+  canva: "https://www.canva.com",
+  figma: "https://www.figma.com",
+  notion: "https://www.notion.so",
+  discord: "https://discord.com/app",
+  stackoverflow: "https://stackoverflow.com",
+  "stack overflow": "https://stackoverflow.com",
+  huggingface: "https://huggingface.co",
+  maps: "https://maps.google.com",
+  "google maps": "https://maps.google.com",
+  drive: "https://drive.google.com",
+  "google drive": "https://drive.google.com",
+  photos: "https://photos.google.com",
+  translate: "https://translate.google.com",
+  weather: "https://weather.com",
+  zoom: "https://zoom.us",
+};
+
+function resolveWebUrl(raw: string): string {
+  if (!raw || !raw.trim()) return "https://www.google.com";
+  const trimmed = raw.trim();
+  const lower = trimmed.toLowerCase();
+
+  if (KNOWN_WEB_SITES[lower]) {
+    return KNOWN_WEB_SITES[lower];
+  }
+
+  // If already a valid URL
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+
+  // If looks like a domain name (e.g. facebook.com, en.wikipedia.org)
+  if (/^[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(\/.*)?$/i.test(trimmed)) {
+    return `https://${trimmed}`;
+  }
+
+  // If single word without spaces (e.g. "wikipedia", "facebook", "espn")
+  if (/^[a-zA-Z0-9-]+$/i.test(trimmed)) {
+    return `https://www.${trimmed}.com`;
+  }
+
+  // Otherwise, treat as search query on Google
+  return `https://www.google.com/search?q=${encodeURIComponent(trimmed)}`;
+}
+
 function openUrlInDefaultBrowser(url: string): void {
-  console.log(`[Native OS] Launching in default browser: ${url}`);
+  const safeUrl = resolveWebUrl(url);
+  console.log(`[Native OS] Launching in default browser: ${safeUrl}`);
   if (process.platform === "win32") {
-    const escaped = url.replace(/'/g, "''");
+    const escaped = safeUrl.replace(/'/g, "''");
     exec(`powershell -NoProfile -NonInteractive -Command "Start-Process '${escaped}'"`, (err) => {
       if (err) {
         console.warn("[Native OS] PowerShell launch failed, fallback to cmd start:", err);
-        const cmdEscaped = url.replace(/"/g, '""');
+        const cmdEscaped = safeUrl.replace(/"/g, '""');
         exec(`start "" "${cmdEscaped}"`);
       }
     });
   } else if (process.platform === "darwin") {
-    exec(`open "${url}"`);
+    exec(`open "${safeUrl}"`);
   } else {
-    exec(`xdg-open "${url}"`);
+    exec(`xdg-open "${safeUrl}"`);
   }
 }
 
@@ -271,6 +343,14 @@ function launchAppNative(appName: string): Promise<{ ok: boolean; result?: unkno
   return new Promise((resolve) => {
     const raw = appName.trim().toLowerCase();
     console.log(`[Native OS] Attempting to open application: ${appName}`);
+
+    // If it's a known web app/site and not a native-only tool, launch directly in browser
+    if (KNOWN_WEB_SITES[raw]) {
+      const webUrl = KNOWN_WEB_SITES[raw];
+      console.log(`[Native OS] Routing web app '${appName}' to default browser: ${webUrl}`);
+      openUrlInDefaultBrowser(webUrl);
+      return resolve({ ok: true, result: { status: "launched", app: appName, method: "web", url: webUrl } });
+    }
 
     const uriSchemes: Record<string, string> = {
       notion: "notion://",
@@ -373,8 +453,10 @@ try {
     const encoded = Buffer.from(psScript, "utf16le").toString("base64");
     exec(`powershell -NoProfile -NonInteractive -EncodedCommand ${encoded}`, (err, stdout, stderr) => {
       if (err) {
-        console.warn(`[Native OS] Launch fallback for ${appName}:`, stderr || err.message);
-        return resolve({ ok: false, error: `Could not launch application '${appName}'.` });
+        console.warn(`[Native OS] Local app not found for '${appName}', opening in default browser:`, stderr || err.message);
+        const webUrl = resolveWebUrl(appName);
+        openUrlInDefaultBrowser(webUrl);
+        return resolve({ ok: true, result: { status: "launched", app: appName, method: "browser_fallback", url: webUrl } });
       }
       console.log(`[Native OS] Launched ${appName}:`, stdout.trim());
       resolve({ ok: true, result: { status: "launched", app: appName, detail: stdout.trim() } });
@@ -660,16 +742,10 @@ async function executeNativeFallback(
     }
 
     if (tool === "openWebsite" || tool === "openUrl") {
-      const raw = (args.url || args.site || "") as string;
-      let target = raw;
-      if (raw.toLowerCase() === "youtube") target = "https://youtube.com";
-      else if (raw.toLowerCase() === "google") target = "https://google.com";
-      else if (raw.toLowerCase() === "github") target = "https://github.com";
-      else if (raw.toLowerCase() === "chatgpt") target = "https://chatgpt.com";
-      else if (raw.toLowerCase() === "gmail") target = "https://mail.google.com";
-      else if (!/^https?:\/\//i.test(target)) target = `https://${target}`;
+      const raw = (args.url || args.site || args.name || args.query || args.app || args.website || "") as string;
+      const target = resolveWebUrl(raw);
       openUrlInDefaultBrowser(target);
-      return { ok: true, result: { status: "opened", url: target } };
+      return { ok: true, result: { status: "opened", url: target, raw } };
     }
 
     if (tool === "searchGoogle" || tool === "searchWeb") {
@@ -1673,8 +1749,14 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
                 },
                 {
                   name: "openWebsite",
-                  description: "Open a named website or URL in the user's default system browser. Supports shortcuts: youtube, gmail, google, github, chatgpt, etc.",
-                  parameters: { type: Type.OBJECT, properties: { name: { type: Type.STRING, description: "Site name shortcut (e.g. 'youtube', 'gmail')." }, url: { type: Type.STRING, description: "Full URL if no shortcut." } } }
+                  description: "Open any website, URL, or web service (e.g. 'wikipedia', 'facebook', 'instagram', 'twitter', 'reddit', 'youtube', 'github', 'chatgpt', 'netflix', 'amazon', 'gmail', etc.) in the user's default browser.",
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      name: { type: Type.STRING, description: "Website or service name (e.g. 'wikipedia', 'facebook', 'instagram', 'twitter', 'reddit')." },
+                      url: { type: Type.STRING, description: "Full URL or domain (e.g. 'https://wikipedia.org' or 'facebook.com')." }
+                    }
+                  }
                 },
                 {
                   name: "searchWeb",

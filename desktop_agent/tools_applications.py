@@ -159,12 +159,26 @@ def _launch_universal(name: str) -> str:
         subprocess.Popen(f'start "" "{exe_path}"', shell=True)
         return os.path.splitext(os.path.basename(exe_path))[0]
 
-    # 4. Direct shell fallback
+    # 4. Check if it's a known web service or site
+    from .tools_websites import SITE_URLS, open_url
+
+    if norm in SITE_URLS:
+        open_url(SITE_URLS[norm])
+        return name.title()
+
+    # 5. Direct shell fallback or browser fallback
     try:
-        subprocess.Popen(f'start "" "{name}"', shell=True)
+        if shutil.which(name):
+            subprocess.Popen(f'start "" "{name}"', shell=True)
+            return name
+        open_url(name)
         return name
     except Exception as e:
-        raise ToolError(f"Could not open application '{name}': {e}") from e
+        try:
+            open_url(name)
+            return name
+        except Exception:
+            raise ToolError(f"Could not open application '{name}': {e}") from e
 
 
 def _resolve_app_targets(name: str) -> tuple[str, List[str]]:
