@@ -293,6 +293,10 @@ $knownExe = @{
   "file explorer" = "explorer";
   "taskmgr" = "taskmgr";
   "task manager" = "taskmgr";
+  "antigravity" = "$env:LOCALAPPDATA\\Programs\\Antigravity IDE\\Antigravity IDE.exe";
+  "antigravity ide" = "$env:LOCALAPPDATA\\Programs\\Antigravity IDE\\Antigravity IDE.exe";
+  "anitgravity" = "$env:LOCALAPPDATA\\Programs\\Antigravity IDE\\Antigravity IDE.exe";
+  "whatsapp" = "whatsapp:";
   "cmd" = "cmd";
   "terminal" = "wt";
   "powershell" = "powershell";
@@ -384,7 +388,10 @@ function closeAppNative(appName: string): Promise<{ ok: boolean; result?: unknow
       powershell: ["powershell.exe", "powershell", "pwsh.exe"],
       terminal: ["WindowsTerminal.exe", "WindowsTerminal"],
       "windows terminal": ["WindowsTerminal.exe", "WindowsTerminal"],
-      whatsapp: ["WhatsApp.exe", "WhatsApp"],
+      whatsapp: ["WhatsApp.Root.exe", "WhatsApp.exe", "WhatsApp"],
+      antigravity: ["Antigravity IDE.exe", "Antigravity IDE", "Antigravity.exe", "Antigravity"],
+      "antigravity ide": ["Antigravity IDE.exe", "Antigravity IDE", "Antigravity.exe", "Antigravity"],
+      anitgravity: ["Antigravity IDE.exe", "Antigravity IDE", "Antigravity.exe", "Antigravity"],
       telegram: ["Telegram.exe", "Telegram"],
       obsidian: ["Obsidian.exe", "Obsidian"],
       word: ["WINWORD.EXE", "WINWORD", "winword.exe"],
