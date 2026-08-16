@@ -71,6 +71,7 @@ def _normalize_key(key: str) -> str:
 def _focus_target_app_if_bella_focused():
     """If Bella's Electron window is currently focused, focus the active app window underneath."""
     try:
+        import ctypes
         import win32gui
         import win32con
 
@@ -82,7 +83,7 @@ def _focus_target_app_if_bella_focused():
                 windows = []
 
                 def enum_cb(h, _):
-                    if win32gui.IsWindowVisible(h):
+                    if win32gui.IsWindowVisible(h) and not win32gui.IsIconic(h):
                         t = win32gui.GetWindowText(h)
                         if t and "bella" not in t.lower() and "program manager" not in t.lower() and "settings" not in t.lower():
                             windows.append((h, t))
@@ -92,8 +93,13 @@ def _focus_target_app_if_bella_focused():
                 if windows:
                     target_hwnd, target_title = windows[0]
                     try:
-                        win32gui.ShowWindow(target_hwnd, win32con.SW_RESTORE)
+                        # Windows Alt-key bypass trick to guarantee SetForegroundWindow succeeds
+                        VK_MENU = 0x12
+                        KEYEVENTF_KEYUP = 0x0002
+                        ctypes.windll.user32.keybd_event(VK_MENU, 0, 0, 0)
+                        win32gui.ShowWindow(target_hwnd, win32con.SW_SHOW)
                         win32gui.SetForegroundWindow(target_hwnd)
+                        ctypes.windll.user32.keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, 0)
                         time.sleep(0.06)
                     except Exception:
                         pass

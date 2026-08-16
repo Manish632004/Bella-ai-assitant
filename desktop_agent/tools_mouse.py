@@ -28,7 +28,7 @@ def mouse_move(args: Dict[str, Any]) -> Dict[str, Any]:
     ag = _get_pyautogui()
     x = int(args.get("x", 0))
     y = int(args.get("y", 0))
-    ag.moveTo(x, y, duration=0.15)
+    ag.moveTo(x, y, duration=0.1)
     return {"result": f"Mouse moved to ({x}, {y}).", "coordinates": {"x": x, "y": y}}
 
 
@@ -44,12 +44,35 @@ def mouse_click(args: Dict[str, Any] = None) -> Dict[str, Any]:
     button = str(args.get("button", "left")).lower()
 
     if x is not None and y is not None:
-        ag.click(int(x), int(y), button=button)
-        return {"result": f"Mouse {button}-clicked at ({int(x)}, {int(y)}).", "coordinates": {"x": int(x), "y": int(y)}}
-    else:
+        ag.moveTo(int(x), int(y), duration=0.05)
+
+    # 1. Direct Windows hardware mouse_event dispatch
+    try:
+        import ctypes
+        MOUSEEVENTF_LEFTDOWN = 0x0002
+        MOUSEEVENTF_LEFTUP = 0x0004
+        MOUSEEVENTF_RIGHTDOWN = 0x0008
+        MOUSEEVENTF_RIGHTUP = 0x0010
+
+        if button == "right":
+            ctypes.windll.user32.mouse_event(MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, 0)
+            time.sleep(0.03)
+            ctypes.windll.user32.mouse_event(MOUSEEVENTF_RIGHTUP, 0, 0, 0, 0)
+        else:
+            ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
+            time.sleep(0.03)
+            ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+    except Exception:
+        pass
+
+    # 2. PyAutoGUI fallback
+    try:
         ag.click(button=button)
-        pos = ag.position()
-        return {"result": f"Mouse {button}-clicked at current position ({pos.x}, {pos.y}).", "coordinates": {"x": pos.x, "y": pos.y}}
+    except Exception:
+        pass
+
+    pos = ag.position()
+    return {"result": f"Mouse {button}-clicked at ({pos.x}, {pos.y}).", "coordinates": {"x": pos.x, "y": pos.y}}
 
 
 @register("mouseDoubleClick")
@@ -62,12 +85,27 @@ def mouse_double_click(args: Dict[str, Any] = None) -> Dict[str, Any]:
     y = args.get("y")
 
     if x is not None and y is not None:
-        ag.doubleClick(int(x), int(y))
-        return {"result": f"Mouse double-clicked at ({int(x)}, {int(y)}).", "coordinates": {"x": int(x), "y": int(y)}}
-    else:
+        ag.moveTo(int(x), int(y), duration=0.05)
+
+    try:
+        import ctypes
+        MOUSEEVENTF_LEFTDOWN = 0x0002
+        MOUSEEVENTF_LEFTUP = 0x0004
+        for _ in range(2):
+            ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
+            time.sleep(0.03)
+            ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+            time.sleep(0.05)
+    except Exception:
+        pass
+
+    try:
         ag.doubleClick()
-        pos = ag.position()
-        return {"result": f"Mouse double-clicked at current position ({pos.x}, {pos.y}).", "coordinates": {"x": pos.x, "y": pos.y}}
+    except Exception:
+        pass
+
+    pos = ag.position()
+    return {"result": f"Mouse double-clicked at ({pos.x}, {pos.y}).", "coordinates": {"x": pos.x, "y": pos.y}}
 
 
 @register("mouseRightClick")
