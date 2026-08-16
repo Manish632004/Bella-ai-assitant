@@ -68,12 +68,47 @@ def _normalize_key(key: str) -> str:
     return KEY_MAP.get(k, k)
 
 
+def _focus_target_app_if_bella_focused():
+    """If Bella's Electron window is currently focused, focus the active app window underneath."""
+    try:
+        import win32gui
+        import win32con
+
+        fg = win32gui.GetForegroundWindow()
+        if fg:
+            title = win32gui.GetWindowText(fg)
+            # If current foreground is Bella, transparent widget, or desktop manager, find the top application
+            if not title or "bella" in title.lower() or "electron" in title.lower():
+                windows = []
+
+                def enum_cb(h, _):
+                    if win32gui.IsWindowVisible(h):
+                        t = win32gui.GetWindowText(h)
+                        if t and "bella" not in t.lower() and "program manager" not in t.lower() and "settings" not in t.lower():
+                            windows.append((h, t))
+                    return True
+
+                win32gui.EnumWindows(enum_cb, None)
+                if windows:
+                    target_hwnd, target_title = windows[0]
+                    try:
+                        win32gui.ShowWindow(target_hwnd, win32con.SW_RESTORE)
+                        win32gui.SetForegroundWindow(target_hwnd)
+                        time.sleep(0.06)
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+
+
 @register("keyboardType")
 @register("keyboard.type")
 def keyboard_type(args: Dict[str, Any]) -> Dict[str, Any]:
     text = args.get("text") or args.get("value") or ""
     if not text:
         return {"result": "No text provided to type."}
+
+    _focus_target_app_if_bella_focused()
 
     # For multi-line, long strings, or complex Unicode, clipboard paste is fast and lossless
     if len(str(text)) > 50 or "\n" in str(text) or any(ord(c) > 127 for c in str(text)):
@@ -92,19 +127,34 @@ def keyboard_type(args: Dict[str, Any]) -> Dict[str, Any]:
 @register("pressReturn")
 def press_enter(args: Dict[str, Any] = None) -> Dict[str, Any]:
     """Press the Enter/Return key in the active window."""
+    _focus_target_app_if_bella_focused()
+
+    # Tier 1: Windows API keybd_event with hardware scancode 0x1C for Return
     try:
         import ctypes
+
         VK_RETURN = 0x0D
         KEYEVENTF_KEYUP = 0x0002
-        ctypes.windll.user32.keybd_event(VK_RETURN, 0, 0, 0)
+        b_scan = ctypes.windll.user32.MapVirtualKeyW(VK_RETURN, 0) or 0x1C
+        ctypes.windll.user32.keybd_event(VK_RETURN, b_scan, 0, 0)
         time.sleep(0.02)
-        ctypes.windll.user32.keybd_event(VK_RETURN, 0, KEYEVENTF_KEYUP, 0)
+        ctypes.windll.user32.keybd_event(VK_RETURN, b_scan, KEYEVENTF_KEYUP, 0)
     except Exception:
         pass
 
+    # Tier 2: pyautogui
     try:
         ag = _get_pyautogui()
         ag.press("enter")
+    except Exception:
+        pass
+
+    # Tier 3: PowerShell SendWait
+    try:
+        import subprocess
+
+        ps_cmd = 'Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait("{ENTER}")'
+        subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_cmd], timeout=3, check=False)
     except Exception:
         pass
 
@@ -121,6 +171,7 @@ def keyboard_press(args: Dict[str, Any] = None) -> Dict[str, Any]:
     if norm == "enter":
         return press_enter(args)
 
+    _focus_target_app_if_bella_focused()
     ag = _get_pyautogui()
     ag.press(norm)
     return {"result": f"Pressed key: {norm.upper()}."}
@@ -142,6 +193,7 @@ def keyboard_hotkey(args: Dict[str, Any]) -> Dict[str, Any]:
     if not normalized:
         raise ToolError("No valid keys provided for hotkey.")
 
+    _focus_target_app_if_bella_focused()
     ag = _get_pyautogui()
     ag.hotkey(*normalized)
     combo_str = "+".join(k.upper() for k in normalized)
@@ -156,6 +208,7 @@ def keyboard_hotkey(args: Dict[str, Any]) -> Dict[str, Any]:
 @register("switchToPreviousTab")
 def previous_tab(args: Dict[str, Any] = None) -> Dict[str, Any]:
     """Switch to the previous tab in the active browser (Ctrl+Shift+Tab / Ctrl+PageUp)."""
+    _focus_target_app_if_bella_focused()
     ag = _get_pyautogui()
     try:
         ag.hotkey("ctrl", "shift", "tab")
@@ -168,6 +221,7 @@ def previous_tab(args: Dict[str, Any] = None) -> Dict[str, Any]:
 @register("switchToNextTab")
 def next_tab(args: Dict[str, Any] = None) -> Dict[str, Any]:
     """Switch to the next tab in the active browser (Ctrl+Tab / Ctrl+PageDown)."""
+    _focus_target_app_if_bella_focused()
     ag = _get_pyautogui()
     try:
         ag.hotkey("ctrl", "tab")
@@ -180,6 +234,7 @@ def next_tab(args: Dict[str, Any] = None) -> Dict[str, Any]:
 @register("browserGoBack")
 def browser_go_back(args: Dict[str, Any] = None) -> Dict[str, Any]:
     """Go back in browser history (Alt+Left)."""
+    _focus_target_app_if_bella_focused()
     ag = _get_pyautogui()
     ag.hotkey("alt", "left")
     return {"result": "Navigated back in browser history (Alt+Left)."}
@@ -189,6 +244,7 @@ def browser_go_back(args: Dict[str, Any] = None) -> Dict[str, Any]:
 @register("browserGoForward")
 def browser_go_forward(args: Dict[str, Any] = None) -> Dict[str, Any]:
     """Go forward in browser history (Alt+Right)."""
+    _focus_target_app_if_bella_focused()
     ag = _get_pyautogui()
     ag.hotkey("alt", "right")
     return {"result": "Navigated forward in browser history (Alt+Right)."}
@@ -198,6 +254,7 @@ def browser_go_forward(args: Dict[str, Any] = None) -> Dict[str, Any]:
 @register("browserNewTab")
 def browser_new_tab(args: Dict[str, Any] = None) -> Dict[str, Any]:
     """Open a new browser tab (Ctrl+T)."""
+    _focus_target_app_if_bella_focused()
     ag = _get_pyautogui()
     ag.hotkey("ctrl", "t")
     return {"result": "Opened new browser tab (Ctrl+T)."}
@@ -207,6 +264,7 @@ def browser_new_tab(args: Dict[str, Any] = None) -> Dict[str, Any]:
 @register("browserCloseTab")
 def browser_close_tab(args: Dict[str, Any] = None) -> Dict[str, Any]:
     """Close the active browser tab (Ctrl+W)."""
+    _focus_target_app_if_bella_focused()
     ag = _get_pyautogui()
     ag.hotkey("ctrl", "w")
     return {"result": "Closed active browser tab (Ctrl+W)."}
