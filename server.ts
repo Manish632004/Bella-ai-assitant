@@ -1837,7 +1837,10 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
         "   - Use 'browserClick', 'browserScroll', 'browserType', 'browserTabAction', 'browserMediaControl' ONLY to interact with the in-app projector when it is already actively open on screen.\n" +
         "   - Use 'changeBackground' to shift your theme and 'saveCustomMemory' to memorize facts.\n" +
         "9. REAL-TIME SCREEN SHARING & MULTIMODAL SCREEN VISION SYSTEM:\n" +
-        "   - You now have native, actual Multimodal Screen Vision! When the user clicks 'Share Screen', you will receive real-time, highly compressed image frames of their desktop, application window, or browser tab.\n" +
+        "   - You now have native, actual Multimodal Screen Vision! When screen sharing is active, you will receive real-time, highly compressed image frames of MANISH's desktop, application window, or browser tab.\n" +
+        "   - STARTING & STOPPING SCREEN SHARING VIA VOICE:\n" +
+        "     * When MANISH asks you to 'start screen share', 'share my screen', 'can you see my screen?', 'look at my screen', 'start screen vision', or 'turn on screen sharing': CALL 'startScreenShare()' immediately! Respond warmly: 'Starting screen sharing for you now! Let me take a look at what you\\'re working on.'\n" +
+        "     * When MANISH says 'stop screen sharing', 'stop sharing', or 'turn off screen share': CALL 'stopScreenShare()'.\n" +
         "   - You can see exactly what is on their screen. Use this live visual stream to analyze terminal errors, write/explain/troubleshoot code, explain YouTube/social analytics interfaces, read layout text, summarize full web page details, review design mockups or thumbnails, and provide deep context-aware companion chat!\n" +
         "   - When the user asks 'What is on my screen?', 'What website am I on?', 'Do you see any errors?', 'Explain this code', 'Summarize this page', 'Read the visible text', 'How is this thumbnail?', or 'Analyze my YouTube analytics', immediately examine the latest incoming visual frame to diagnose issues, and answer with expert, friendly empathy like a close caller. Speak with direct, confident visual description reference!\n" +
         "10. JARVIS-STYLE DESKTOP CONTROL POWERS (Native Windows & Desktop Control):\n" +
@@ -2065,6 +2068,16 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
                     },
                     required: ["category", "text"]
                   }
+                },
+                {
+                  name: "startScreenShare",
+                  description: "Trigger and start real-time screen sharing so Bella can see the user's screen in real time through multimodal vision.",
+                  parameters: { type: Type.OBJECT, properties: {} }
+                },
+                {
+                  name: "stopScreenShare",
+                  description: "Stop ongoing screen sharing.",
+                  parameters: { type: Type.OBJECT, properties: {} }
                 },
 
                 // ======== PERSONAL AI DASHBOARD MANAGEMENT TOOLS ========
@@ -2619,6 +2632,42 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
                       }
                     } catch (err: any) {
                       console.error("saveCustomMemory execution failure:", err);
+                    }
+                  })();
+                } else if (fc.name === "startScreenShare") {
+                  (async () => {
+                    try {
+                      console.log("[Server] Sending start_screen_share command to client UI...");
+                      clientWs.send(JSON.stringify({ type: "start_screen_share" }));
+                      session.sendToolResponse({
+                        functionResponses: [
+                          {
+                            name: fc.name,
+                            response: { output: { result: "Screen sharing stream started. Visual frames are now streaming directly to vision model." } },
+                            id: fc.id
+                          }
+                        ]
+                      });
+                    } catch (err: any) {
+                      console.error("startScreenShare error:", err);
+                    }
+                  })();
+                } else if (fc.name === "stopScreenShare") {
+                  (async () => {
+                    try {
+                      console.log("[Server] Sending stop_screen_share command to client UI...");
+                      clientWs.send(JSON.stringify({ type: "stop_screen_share" }));
+                      session.sendToolResponse({
+                        functionResponses: [
+                          {
+                            name: fc.name,
+                            response: { output: { result: "Screen sharing stopped." } },
+                            id: fc.id
+                          }
+                        ]
+                      });
+                    } catch (err: any) {
+                      console.error("stopScreenShare error:", err);
                     }
                   })();
                 } else if (fc.name.startsWith("dashboard")) {

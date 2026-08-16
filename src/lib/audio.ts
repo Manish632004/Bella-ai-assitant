@@ -87,6 +87,8 @@ export class BellaAudioSession {
   private onError: (error: string) => void;
   private onMemorySync?: (memories: any[]) => void;
   private onDashboardSync?: () => void;
+  private onStartScreenShare?: () => void;
+  private onStopScreenShare?: () => void;
   
   private currentState: LiveState = "disconnected";
   private isActivated = false;
@@ -102,6 +104,8 @@ export class BellaAudioSession {
     onError: (error: string) => void;
     onMemorySync?: (memories: any[]) => void;
     onDashboardSync?: () => void;
+    onStartScreenShare?: () => void;
+    onStopScreenShare?: () => void;
     onMiniModeChange?: (enabled: boolean) => void;
     onProactiveInit?: (settings: any, suggestions: any[]) => void;
     onProactiveSuggestion?: (suggestion: any) => void;
@@ -113,6 +117,8 @@ export class BellaAudioSession {
     this.onError = handlers.onError;
     this.onMemorySync = handlers.onMemorySync;
     this.onDashboardSync = handlers.onDashboardSync;
+    this.onStartScreenShare = handlers.onStartScreenShare;
+    this.onStopScreenShare = handlers.onStopScreenShare;
     this.onMiniModeChange = handlers.onMiniModeChange;
     this.onProactiveInit = handlers.onProactiveInit;
     this.onProactiveSuggestion = handlers.onProactiveSuggestion;
@@ -323,6 +329,15 @@ export class BellaAudioSession {
           // Handle dashboard synchronization (live updates from voice tools)
           if (data.type === "dashboard_sync" && this.onDashboardSync) {
             this.onDashboardSync();
+          }
+
+          // Handle screen sharing voice activation
+          if (data.type === "start_screen_share" && this.onStartScreenShare) {
+            this.onStartScreenShare();
+          }
+
+          if (data.type === "stop_screen_share" && this.onStopScreenShare) {
+            this.onStopScreenShare();
           }
 
           // Handle proactive intelligence init

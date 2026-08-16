@@ -706,6 +706,14 @@ export default function App() {
         console.log("[App] WebSocket dashboard sync triggered from voice tool execution");
         window.dispatchEvent(new CustomEvent("bella:dashboard_sync"));
       },
+      onStartScreenShare: () => {
+        console.log("[App] Voice triggered screen sharing start");
+        void startScreenSharing();
+      },
+      onStopScreenShare: () => {
+        console.log("[App] Voice triggered screen sharing stop");
+        stopScreenSharing();
+      },
       onMiniModeChange: (enabled) => {
         console.log("[App] Mini mode transition triggered:", enabled);
         setIsMiniMode(enabled);

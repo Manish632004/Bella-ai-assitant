@@ -79,12 +79,20 @@
       "type": "project_suggestion",
       "action": "dismissed",
       "timestamp": "2026-08-16T12:38:37.262Z"
+    },
+    {
+      "id": "zxctg0trl",
+      "suggestionId": "sug-learning-review-learn-1",
+      "category": "learning",
+      "type": "learning_suggestion",
+      "action": "dismissed",
+      "timestamp": "2026-08-16T12:46:25.164Z"
     }
   ],
   "weights": {
     "tasks": 0.8999999999999999,
     "projects": 0.7499999999999999,
-    "learning": 0.7499999999999999,
+    "learning": 0.5999999999999999,
     "calendar": 1,
     "coding": 1,
     "cybersecurity": 1.1,
@@ -96,7 +104,7 @@
   },
   "dismissals": {
     "tasks": 2,
-    "learning": 3,
+    "learning": 4,
     "projects": 3
   }
 }

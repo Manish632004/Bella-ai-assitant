@@ -96,35 +96,40 @@ VK_MEDIA_NEXT_TRACK = 0xB0
 VK_MEDIA_PREV_TRACK = 0xB1
 VK_MEDIA_STOP = 0xB2
 VK_MEDIA_PLAY_PAUSE = 0xB3
+KEYEVENTF_EXTENDEDKEY = 0x0001
 KEYEVENTF_KEYUP = 0x0002
 
 
 def _press_vk(vk: int) -> None:
     try:
-        ctypes.windll.user32.keybd_event(vk, 0, 0, 0)
+        # On Windows, hardware media keys (0xAD - 0xB3) require KEYEVENTF_EXTENDEDKEY flag
+        b_scan = ctypes.windll.user32.MapVirtualKeyW(vk, 0)
+        ctypes.windll.user32.keybd_event(vk, b_scan, KEYEVENTF_EXTENDEDKEY, 0)
         time.sleep(0.02)
-        ctypes.windll.user32.keybd_event(vk, 0, KEYEVENTF_KEYUP, 0)
+        ctypes.windll.user32.keybd_event(vk, b_scan, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP, 0)
     except Exception:
-        # pyautogui fallback
-        try:
-            import pyautogui
+        pass
 
-            if vk == VK_VOLUME_UP:
-                pyautogui.press("volumeup")
-            elif vk == VK_VOLUME_DOWN:
-                pyautogui.press("volumedown")
-            elif vk == VK_VOLUME_MUTE:
-                pyautogui.press("volumemute")
-            elif vk == VK_MEDIA_NEXT_TRACK:
-                pyautogui.press("nexttrack")
-            elif vk == VK_MEDIA_PREV_TRACK:
-                pyautogui.press("prevtrack")
-            elif vk == VK_MEDIA_PLAY_PAUSE:
-                pyautogui.press("playpause")
-            elif vk == VK_MEDIA_STOP:
-                pyautogui.press("stop")
-        except Exception:
-            pass
+    # pyautogui fallback
+    try:
+        import pyautogui
+
+        if vk == VK_VOLUME_UP:
+            pyautogui.press("volumeup")
+        elif vk == VK_VOLUME_DOWN:
+            pyautogui.press("volumedown")
+        elif vk == VK_VOLUME_MUTE:
+            pyautogui.press("volumemute")
+        elif vk == VK_MEDIA_NEXT_TRACK:
+            pyautogui.press("nexttrack")
+        elif vk == VK_MEDIA_PREV_TRACK:
+            pyautogui.press("prevtrack")
+        elif vk == VK_MEDIA_PLAY_PAUSE:
+            pyautogui.press("playpause")
+        elif vk == VK_MEDIA_STOP:
+            pyautogui.press("stop")
+    except Exception:
+        pass
 
 
 def _set_volume_via_keys(target: float) -> None:
@@ -222,22 +227,28 @@ def _send_youtube_shortcut(action: str) -> bool:
     try:
         import win32gui
         matches = []
+        browser_matches = []
 
         def enum_cb(hwnd, _):
             if win32gui.IsWindowVisible(hwnd):
                 title = win32gui.GetWindowText(hwnd)
-                if title and ("youtube" in title.lower() or "spotify" in title.lower()):
-                    matches.append((hwnd, title))
+                if title:
+                    tl = title.lower()
+                    if "youtube" in tl or "spotify" in tl:
+                        matches.append((hwnd, title))
+                    elif any(b in tl for b in ["chrome", "brave", "edge", "firefox", "opera"]):
+                        browser_matches.append((hwnd, title))
             return True
 
         win32gui.EnumWindows(enum_cb, None)
-        if matches:
-            hwnd, title = matches[0]
+        target = (matches[0] if matches else (browser_matches[0] if browser_matches else None))
+        if target:
+            hwnd, title = target
             try:
                 import win32con
                 win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
                 win32gui.SetForegroundWindow(hwnd)
-                time.sleep(0.08)
+                time.sleep(0.06)
             except Exception:
                 pass
 
