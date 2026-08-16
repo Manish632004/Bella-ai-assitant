@@ -5,17 +5,19 @@
       "title": "Finish authentication module & permission handler",
       "category": "Bella AI Assistant",
       "priority": "high",
-      "status": "pending",
+      "status": "completed",
       "dueDate": "2026-08-17T07:26:37.689Z",
-      "createdAt": "2026-08-13T07:26:37.689Z"
+      "createdAt": "2026-08-13T07:26:37.689Z",
+      "updatedAt": "2026-08-16T11:13:08.484Z"
     },
     {
       "id": "task-2",
       "title": "Review SQL Injection & Web Security fundamentals",
       "category": "Cybersecurity",
       "priority": "medium",
-      "status": "pending",
-      "createdAt": "2026-08-11T07:26:37.689Z"
+      "status": "completed",
+      "createdAt": "2026-08-11T07:26:37.689Z",
+      "updatedAt": "2026-08-16T11:13:08.725Z"
     }
   ],
   "projects": [
@@ -64,5 +66,28 @@
       "reviewCount": 1
     }
   ],
-  "calendarEvents": []
+  "calendarEvents": [],
+  "activities": [
+    {
+      "id": "act-n1bqryn",
+      "title": "Created task \"web security\"",
+      "type": "tasks",
+      "description": "Priority: critical, Category: Inbox",
+      "timestamp": "2026-08-16T12:01:51.317Z"
+    },
+    {
+      "id": "act-mr9faad",
+      "title": "Completed task \"Review SQL Injection & Web Security fundamentals\"",
+      "type": "tasks",
+      "description": "Marked as done in Cybersecurity",
+      "timestamp": "2026-08-16T11:13:08.725Z"
+    },
+    {
+      "id": "act-0x34h5v",
+      "title": "Completed task \"Finish authentication module & permission handler\"",
+      "type": "tasks",
+      "description": "Marked as done in Bella AI Assistant",
+      "timestamp": "2026-08-16T11:13:08.484Z"
+    }
+  ]
 }

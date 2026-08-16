@@ -1,5 +1,5 @@
 /**
- * Types & Contracts for BELLA Proactive Intelligence System
+ * Types & Contracts for BELLA Proactive Intelligence System & Personal AI Dashboard
  */
 
 export type ProactiveLevel = "OFF" | "LOW" | "MEDIUM" | "HIGH";
@@ -76,16 +76,24 @@ export interface TaskItem {
   category?: string;
   priority: "low" | "medium" | "high" | "critical";
   status: "pending" | "in_progress" | "completed";
+  estimatedMinutes?: number;
   dueDate?: string;
+  projectId?: string;
   createdAt: string;
   updatedAt?: string;
 }
+
+export type ProjectStatus = "Active" | "On Track" | "At Risk" | "Blocked" | "Completed" | "Paused";
 
 export interface ProjectItem {
   id: string;
   name: string;
   description?: string;
-  status: "active" | "paused" | "completed";
+  status: ProjectStatus;
+  progressPercent: number;
+  currentMilestone?: string;
+  nextTask?: string;
+  deadline?: string;
   lastActiveAt: string;
   tasksCount?: number;
   openTasksCount?: number;
@@ -95,9 +103,19 @@ export interface LearningTopic {
   id: string;
   topic: string;
   domain: "cybersecurity" | "programming" | "general";
+  category?: string; // e.g. "Web Security", "Active Directory", "Linux"
   lastReviewedAt: string;
   retentionScore: number; // 0.0 - 1.0
   reviewCount: number;
+  dueStatus?: "today" | "tomorrow" | "upcoming";
+}
+
+export interface CybersecurityProficiency {
+  category: "Networking" | "Linux" | "Web Security" | "SOC" | "Active Directory" | "Cloud Security";
+  proficiencyPercent: number;
+  completedLabs: number;
+  totalLabs: number;
+  status: "active" | "improving" | "mastered";
 }
 
 export interface CalendarEventItem {
@@ -106,6 +124,15 @@ export interface CalendarEventItem {
   startTime: string;
   endTime: string;
   isAllDay?: boolean;
+}
+
+export interface ActivityItem {
+  id: string;
+  title: string;
+  type: "all" | "projects" | "learning" | "notes" | "tasks" | "ai";
+  description?: string;
+  timestamp: string;
+  linkId?: string;
 }
 
 export interface PermissionState {
@@ -168,4 +195,55 @@ export interface UserContext {
   learningTopics: LearningTopic[];
   memories: Array<{ id: string; category: string; text: string }>;
   settings: ProactiveSettings;
+}
+
+export interface DashboardSummary {
+  greeting: {
+    greetingText: string;
+    subText: string;
+    userName: string;
+  };
+  aiBriefing: {
+    title: string;
+    summary: string;
+    reasoning: string;
+    recommendedFocus: string;
+    estimatedMinutes: number;
+    actionLabel?: string;
+    planDetails?: string[];
+  };
+  todayFocus: TaskItem[];
+  activeProjects: ProjectItem[];
+  learningSummary: {
+    overallProgressPercent: number;
+    currentFocus: string;
+    weeklyCompletions: {
+      labs: number;
+      topics: number;
+      revisions: number;
+    };
+    nextRecommendation: string;
+    cybersecurityProficiency: CybersecurityProficiency[];
+  };
+  revisionQueue: LearningTopic[];
+  taskStats: {
+    today: number;
+    upcoming: number;
+    overdue: number;
+    completed: number;
+  };
+  productivitySnapshot: {
+    focusHours: string;
+    tasksCompleted: number;
+    labsCompleted: number;
+    notesCreated: number;
+  };
+  recentActivity: ActivityItem[];
+  recommendations: Array<{
+    id: string;
+    title: string;
+    reason: string;
+    category: ProactiveCategory;
+    actionLabel?: string;
+  }>;
 }

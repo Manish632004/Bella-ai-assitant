@@ -1552,6 +1552,174 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
       res.status(500).json({ error: e.message });
     }
   });
+
+  // ---------------------------------------------------------------------------
+  // Personal AI Dashboard Endpoints
+  // ---------------------------------------------------------------------------
+  const contextEngine = proactiveEngine.getContextEngine();
+
+  // Full dashboard aggregated payload
+  app.get("/api/dashboard/summary", async (_req, res) => {
+    try {
+      const summary = await contextEngine.getDashboardSummary("Manish");
+      res.json(summary);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Tasks API
+  app.get("/api/tasks", async (_req, res) => {
+    try {
+      res.json(contextEngine.getTasks());
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/tasks", express.json(), async (req, res) => {
+    try {
+      const { title, category, priority, estimatedMinutes, dueDate, projectId } = req.body;
+      if (!title) return res.status(400).json({ error: "Missing title" });
+      const task = await contextEngine.addTask({
+        title,
+        category: category || "Inbox",
+        priority: priority || "medium",
+        status: "pending",
+        estimatedMinutes: estimatedMinutes || 30,
+        dueDate,
+        projectId,
+      });
+      res.json(task);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.patch("/api/tasks/:id", express.json(), async (req, res) => {
+    try {
+      const updated = await contextEngine.updateTask(req.params.id, req.body);
+      if (!updated) return res.status(404).json({ error: "Task not found" });
+      res.json(updated);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.delete("/api/tasks/:id", async (req, res) => {
+    try {
+      const ok = await contextEngine.deleteTask(req.params.id);
+      res.json({ success: ok });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Projects API
+  app.get("/api/projects", async (_req, res) => {
+    try {
+      res.json(contextEngine.getProjects());
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/projects", express.json(), async (req, res) => {
+    try {
+      const { name, description, status, progressPercent, currentMilestone, nextTask, deadline } = req.body;
+      if (!name) return res.status(400).json({ error: "Missing project name" });
+      const proj = await contextEngine.addProject({
+        name,
+        description: description || "",
+        status: status || "Active",
+        progressPercent: progressPercent || 0,
+        currentMilestone,
+        nextTask,
+        deadline,
+        tasksCount: 0,
+        openTasksCount: 0,
+      });
+      res.json(proj);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.patch("/api/projects/:id", express.json(), async (req, res) => {
+    try {
+      const updated = await contextEngine.updateProject(req.params.id, req.body);
+      if (!updated) return res.status(404).json({ error: "Project not found" });
+      res.json(updated);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.delete("/api/projects/:id", async (req, res) => {
+    try {
+      const ok = await contextEngine.deleteProject(req.params.id);
+      res.json({ success: ok });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Learning & Revision API
+  app.get("/api/learning/topics", async (_req, res) => {
+    try {
+      res.json({
+        topics: contextEngine.getLearningTopics(),
+        cybersecurityProficiency: contextEngine.getCybersecurityProficiency(),
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/learning/review", express.json(), async (req, res) => {
+    try {
+      const { topic } = req.body;
+      if (!topic) return res.status(400).json({ error: "Missing topic name" });
+      await contextEngine.recordLearningReview(topic);
+      res.json({ success: true, message: `Review recorded for ${topic}` });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Quick Capture API
+  app.post("/api/quick-capture", express.json(), async (req, res) => {
+    try {
+      const { text, type } = req.body;
+      if (!text) return res.status(400).json({ error: "Missing text" });
+      const result = await contextEngine.processQuickCapture(text, type);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Universal Search API
+  app.get("/api/search", async (req, res) => {
+    try {
+      const q = (req.query.q as string) || "";
+      const results = await contextEngine.searchAll(q);
+      res.json({ results });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Activity Stream API
+  app.get("/api/activity", async (req, res) => {
+    try {
+      const filter = (req.query.type as string) || "all";
+      const activities = contextEngine.getActivityList(filter);
+      res.json({ activities });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
   
   // Custom server running with http.createServer so we can upgrade for WebSocket on port 3000
   const server = http.createServer(app);

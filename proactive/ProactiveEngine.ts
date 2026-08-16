@@ -43,6 +43,7 @@ export class ProactiveEngine {
 
   private settingsFile: string;
   private evalTimer: NodeJS.Timeout | null = null;
+  private startupTimer: NodeJS.Timeout | null = null;
   private onSuggestionCallbacks = new Set<(suggestion: ProactiveSuggestion) => void>();
 
   constructor(baseDir?: string) {
@@ -63,16 +64,17 @@ export class ProactiveEngine {
     await this.feedbackManager.init();
     await this.contextEngine.init();
 
-    // Start background evaluation loop (runs every 60 seconds)
+    // Start background evaluation loop (runs every 30 seconds)
     if (this.evalTimer) clearInterval(this.evalTimer);
     this.evalTimer = setInterval(() => {
       void this.runEvaluationCycle();
-    }, 60000);
+    }, 30000);
 
-    // Initial evaluation after 5 seconds on startup
-    setTimeout(() => {
+    // Initial evaluation after 1.5 seconds on startup
+    if (this.startupTimer) clearTimeout(this.startupTimer);
+    this.startupTimer = setTimeout(() => {
       void this.runEvaluationCycle();
-    }, 5000);
+    }, 1500);
 
     console.log("[Proactive Engine] Initialized (Level: " + this.settings.level + ", Enabled: " + this.settings.enabled + ")");
   }
@@ -81,6 +83,10 @@ export class ProactiveEngine {
     if (this.evalTimer) {
       clearInterval(this.evalTimer);
       this.evalTimer = null;
+    }
+    if (this.startupTimer) {
+      clearTimeout(this.startupTimer);
+      this.startupTimer = null;
     }
   }
 

@@ -161,11 +161,11 @@ export class TriggerEngine {
   private checkInactiveProjects(context: UserContext, out: ProactiveSuggestion[]): void {
     const now = Date.now();
     for (const proj of context.projects) {
-      if (proj.status !== "active") continue;
+      if (proj.status && proj.status.toLowerCase() !== "active") continue;
       const lastActive = new Date(proj.lastActiveAt).getTime();
       const inactiveDays = (now - lastActive) / 86400000;
 
-      if (inactiveDays >= 3 && inactiveDays <= 14) {
+      if (inactiveDays >= 2 && inactiveDays <= 30) {
         const score = this.scoringEngine.calculateScore({
           relevance: 0.75,
           urgency: 0.45,

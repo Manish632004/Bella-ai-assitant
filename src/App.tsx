@@ -24,7 +24,8 @@ import {
   RefreshCw,
   PictureInPicture2,
   Minus,
-  Settings as SettingsIcon
+  Settings as SettingsIcon,
+  LayoutDashboard,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { Memory, MemoryCategory } from "./lib/memoryTypes";
@@ -34,6 +35,7 @@ import { BellaSettings, DEFAULT_SETTINGS, loadSettings, saveSettings } from "./l
 import { BellaWakeWordDetector } from "./lib/wakeWord";
 import { ProactiveSuggestionCard } from "./components/ProactiveSuggestionCard";
 import { ProactiveSettings, ProactiveSuggestion } from "../proactive/types";
+import { PersonalAIDashboard } from "./components/dashboard/PersonalAIDashboard";
 
 export default function App() {
   const [state, setState] = useState<LiveState>("disconnected");
@@ -334,18 +336,33 @@ export default function App() {
   const [proactiveSuggestions, setProactiveSuggestions] = useState<ProactiveSuggestion[]>([]);
   const [activeSuggestion, setActiveSuggestion] = useState<ProactiveSuggestion | null>(null);
 
+  // Personal AI Dashboard state
+  const [showDashboard, setShowDashboard] = useState<boolean>(false);
+
   // V2: Settings + wake word state
   const [settings, setSettings] = useState<BellaSettings>(() => loadSettings());
   const [showSettings, setShowSettings] = useState<boolean>(false);
   const showSettingsRef = useRef<boolean>(false);
   useEffect(() => { showSettingsRef.current = showSettings; }, [showSettings]);
 
-  // Ensure window remains in full stage mode when Settings or Memory Dashboard is open
+  // Ensure window remains in full stage mode when Settings, Dashboard, or Memory Dashboard is open
   useEffect(() => {
-    if (showSettings || showMemoryDashboard) {
+    if (showSettings || showMemoryDashboard || showDashboard) {
       setIsMiniMode(false);
     }
-  }, [showSettings, showMemoryDashboard]);
+  }, [showSettings, showMemoryDashboard, showDashboard]);
+
+  // Global keyboard shortcut for Dashboard (Ctrl+D / Cmd+D)
+  useEffect(() => {
+    const handleDashboardHotkey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d") {
+        e.preventDefault();
+        setShowDashboard((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleDashboardHotkey);
+    return () => window.removeEventListener("keydown", handleDashboardHotkey);
+  }, []);
 
   // Listen to taskbar click / restore full mode event from native desktop shell
   useEffect(() => {
@@ -466,27 +483,33 @@ export default function App() {
       })
       .catch(() => {});
 
-    fetch("/api/proactive/suggestions")
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data.suggestions) && data.suggestions.length > 0) {
-          setProactiveSuggestions(data.suggestions);
-          setActiveSuggestion(data.suggestions[0]);
-        }
-      })
-      .catch(() => {});
+    const pollSuggestions = () => {
+      fetch("/api/proactive/suggestions")
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data.suggestions)) {
+            setProactiveSuggestions(data.suggestions);
+            if (data.suggestions.length > 0) {
+              setActiveSuggestion((curr) => curr || data.suggestions[0]);
+            } else {
+              setActiveSuggestion(null);
+            }
+          }
+        })
+        .catch(() => {});
+    };
+
+    pollSuggestions();
+    const sugInterval = setInterval(pollSuggestions, 8000);
+    return () => clearInterval(sugInterval);
   }, []);
 
   const handleAcceptSuggestion = (id: string, action?: any) => {
-    if (sessionRef.current) {
-      sessionRef.current.sendProactiveFeedback(id, "accepted");
-    } else {
-      fetch("/api/proactive/feedback", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ suggestionId: id, action: "accepted" })
-      }).catch(() => {});
-    }
+    fetch("/api/proactive/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ suggestionId: id, action: "accepted" })
+    }).catch(() => {});
 
     if (action && action.actionType === "open_folder") {
       fetch("/api/execute", {
@@ -501,40 +524,33 @@ export default function App() {
   };
 
   const handleDismissSuggestion = (id: string) => {
-    if (sessionRef.current) {
-      sessionRef.current.sendProactiveFeedback(id, "dismissed");
-    } else {
-      fetch("/api/proactive/feedback", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ suggestionId: id, action: "dismissed" })
-      }).catch(() => {});
-    }
+    fetch("/api/proactive/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ suggestionId: id, action: "dismissed" })
+    }).catch(() => {});
+
     setActiveSuggestion(null);
     setProactiveSuggestions((prev) => prev.filter((s) => s.id !== id));
   };
 
   const handleSnoozeSuggestion = (id: string) => {
-    if (sessionRef.current) {
-      sessionRef.current.sendProactiveFeedback(id, "snoozed");
-    } else {
-      fetch("/api/proactive/feedback", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ suggestionId: id, action: "snoozed" })
-      }).catch(() => {});
-    }
+    fetch("/api/proactive/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ suggestionId: id, action: "snoozed" })
+    }).catch(() => {});
+
     setActiveSuggestion(null);
     setProactiveSuggestions((prev) => prev.filter((s) => s.id !== id));
   };
 
   const handleUpdateProactiveSettings = (patch: Partial<ProactiveSettings>) => {
-    if (!proactiveSettings) return;
-    const next = { ...proactiveSettings, ...patch };
-    setProactiveSettings(next);
-    if (sessionRef.current) {
-      sessionRef.current.sendProactiveUpdateSettings(patch);
-    }
+    setProactiveSettings((prev) => {
+      const next = prev ? { ...prev, ...patch } : (patch as ProactiveSettings);
+      return next;
+    });
+
     fetch("/api/proactive/settings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -926,6 +942,25 @@ export default function App() {
               >
                 <PictureInPicture2 size={13} className="text-cyan-400/80" />
                 <span>{isMiniMode ? "EXPAND" : "FLOAT"}</span>
+              </button>
+
+              {/* Personal AI Dashboard Button */}
+              <button
+                onClick={() => {
+                  if (isMiniMode) {
+                    setIsMiniMode(false);
+                  }
+                  setShowDashboard(!showDashboard);
+                }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-[11px] font-mono tracking-wider transition-all duration-200 cursor-pointer ${
+                  showDashboard
+                    ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.3)] font-semibold"
+                    : "bg-white/[0.03] hover:bg-white/[0.08] text-white/60 hover:text-white border-white/[0.06] hover:border-white/[0.15]"
+                }`}
+                title="Personal AI Dashboard (Ctrl+D)"
+              >
+                <LayoutDashboard size={13} className={showDashboard ? "text-cyan-400" : "text-white/40"} />
+                <span>DASHBOARD</span>
               </button>
 
               {/* Real-time Screen Sharing Button */}
@@ -1326,6 +1361,15 @@ export default function App() {
         proactiveSettings={proactiveSettings || undefined}
         onUpdateProactiveSettings={handleUpdateProactiveSettings}
         onResetProactiveFeedback={handleResetProactiveFeedback}
+      />
+
+      {/* Personal AI Dashboard Command Center Modal (Ctrl+D / Cmd+D) */}
+      <PersonalAIDashboard
+        isOpen={showDashboard}
+        onClose={() => setShowDashboard(false)}
+        onStartVoiceSession={handleToggleConnection}
+        voiceState={state}
+        themeColor={themeColor}
       />
     </div>
   );
