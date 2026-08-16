@@ -1,89 +1,83 @@
 {
   "tasks": [
     {
-      "id": "task-rmej58q",
-      "title": "Workout",
-      "category": "Exercise",
-      "priority": "medium",
-      "status": "pending",
-      "estimatedMinutes": 30,
-      "createdAt": "2026-08-16T16:23:21.613Z"
-    },
-    {
-      "id": "task-e8g3yjy",
-      "title": "Drink 5 liters of water",
-      "category": "Personal",
-      "priority": "medium",
-      "status": "pending",
-      "estimatedMinutes": 15,
-      "createdAt": "2026-08-16T16:23:21.613Z"
-    },
-    {
-      "id": "task-sekj7qp",
-      "title": "Practice TryHackMe room",
-      "category": "Study",
-      "priority": "high",
-      "status": "pending",
-      "estimatedMinutes": 30,
-      "createdAt": "2026-08-16T12:33:13.187Z"
-    },
-    {
-      "id": "task-e3ag994",
-      "title": "Drink 4 liters of water",
-      "category": "Inbox",
-      "priority": "medium",
-      "status": "pending",
-      "estimatedMinutes": 30,
-      "createdAt": "2026-08-16T12:33:09.947Z"
-    },
-    {
-      "id": "task-2k92qit",
-      "title": "Workout",
-      "category": "Inbox",
-      "priority": "high",
-      "status": "completed",
-      "estimatedMinutes": 45,
-      "createdAt": "2026-08-16T12:33:09.946Z",
-      "updatedAt": "2026-08-16T12:34:01.122Z"
-    },
-    {
       "id": "task-1",
-      "title": "Finish authentication module & permission handler",
-      "category": "Bella AI Assistant",
-      "priority": "high",
-      "status": "completed",
-      "dueDate": "2026-08-17T07:26:37.689Z",
-      "createdAt": "2026-08-13T07:26:37.689Z",
-      "updatedAt": "2026-08-16T11:13:08.484Z"
+      "title": "Finish authentication system & permission handler",
+      "category": "AI Desktop Assistant",
+      "priority": "critical",
+      "status": "pending",
+      "estimatedMinutes": 60,
+      "dueDate": "2026-08-17T16:28:15.569Z",
+      "createdAt": "2026-08-13T16:28:15.569Z"
     },
     {
       "id": "task-2",
-      "title": "Review SQL Injection & Web Security fundamentals",
+      "title": "Complete PortSwigger Web Security Lab",
       "category": "Cybersecurity",
+      "priority": "high",
+      "status": "pending",
+      "estimatedMinutes": 45,
+      "dueDate": "2026-08-18T16:28:15.569Z",
+      "createdAt": "2026-08-14T16:28:15.569Z"
+    },
+    {
+      "id": "task-3",
+      "title": "Review SQL Injection & Blind SQLi defense",
+      "category": "Learning",
       "priority": "medium",
-      "status": "completed",
-      "createdAt": "2026-08-11T07:26:37.689Z",
-      "updatedAt": "2026-08-16T11:13:08.725Z"
+      "status": "pending",
+      "estimatedMinutes": 20,
+      "dueDate": "2026-08-17T16:28:15.569Z",
+      "createdAt": "2026-08-11T16:28:15.570Z"
+    },
+    {
+      "id": "task-4",
+      "title": "Explore Linux Privilege Escalation vectors",
+      "category": "Cybersecurity",
+      "priority": "low",
+      "status": "pending",
+      "estimatedMinutes": 30,
+      "dueDate": "2026-08-20T16:28:15.570Z",
+      "createdAt": "2026-08-15T16:28:15.570Z"
     }
   ],
   "projects": [
     {
       "id": "proj-1",
-      "name": "Bella AI Assistant",
+      "name": "AI Desktop Assistant",
       "description": "Personal proactive desktop companion with multimodal voice vision",
-      "status": "active",
-      "lastActiveAt": "2026-08-12T07:26:37.689Z",
-      "tasksCount": 5,
+      "status": "Active",
+      "progressPercent": 82,
+      "currentMilestone": "Proactive Dashboard & Voice Context Integration",
+      "nextTask": "Finalize visualizer animations & quick capture bar",
+      "deadline": "2026-08-21T16:28:15.569Z",
+      "lastActiveAt": "2026-08-16T16:28:15.569Z",
+      "tasksCount": 6,
       "openTasksCount": 2
     },
     {
       "id": "proj-2",
-      "name": "Cybersecurity SOC Portfolio",
+      "name": "Cybersecurity Knowledge Platform",
       "description": "Hands-on SOC analysis, TryHackMe labs, and Active Directory security",
-      "status": "active",
-      "lastActiveAt": "2026-08-14T07:26:37.689Z",
-      "tasksCount": 4,
+      "status": "On Track",
+      "progressPercent": 64,
+      "currentMilestone": "Web Application Pentesting & PortSwigger Labs",
+      "nextTask": "Complete PortSwigger SQLi & Authentication Lab",
+      "deadline": "2026-08-28T16:28:15.569Z",
+      "lastActiveAt": "2026-08-14T16:28:15.569Z",
+      "tasksCount": 8,
       "openTasksCount": 3
+    },
+    {
+      "id": "proj-3",
+      "name": "Developer Portfolio",
+      "description": "Showcase AI engineering, desktop robotics & security projects",
+      "status": "Completed",
+      "progressPercent": 100,
+      "currentMilestone": "Deployed & verified",
+      "lastActiveAt": "2026-08-06T16:28:15.569Z",
+      "tasksCount": 5,
+      "openTasksCount": 0
     }
   ],
   "learningTopics": [
@@ -91,127 +85,79 @@
       "id": "learn-1",
       "topic": "SQL Injection",
       "domain": "cybersecurity",
-      "lastReviewedAt": "2026-08-02T07:26:37.689Z",
-      "retentionScore": 0.65,
-      "reviewCount": 2
+      "category": "Web Security",
+      "lastReviewedAt": "2026-08-02T16:28:15.570Z",
+      "retentionScore": 0.55,
+      "reviewCount": 2,
+      "dueStatus": "today"
     },
     {
       "id": "learn-2",
-      "topic": "Active Directory Enumeration & Kerberos",
+      "topic": "HTTP Authentication & Session Tokens",
       "domain": "cybersecurity",
-      "lastReviewedAt": "2026-08-09T07:26:37.689Z",
-      "retentionScore": 0.8,
-      "reviewCount": 3
+      "category": "Web Security",
+      "lastReviewedAt": "2026-08-08T16:28:15.570Z",
+      "retentionScore": 0.72,
+      "reviewCount": 3,
+      "dueStatus": "tomorrow"
     },
     {
       "id": "learn-3",
-      "topic": "Cross-Site Scripting (XSS)",
+      "topic": "Linux Privilege Escalation (SUID / Capabilities)",
       "domain": "cybersecurity",
-      "lastReviewedAt": "2026-07-27T07:26:37.689Z",
-      "retentionScore": 0.5,
-      "reviewCount": 1
+      "category": "Linux",
+      "lastReviewedAt": "2026-08-11T16:28:15.570Z",
+      "retentionScore": 0.85,
+      "reviewCount": 4,
+      "dueStatus": "upcoming"
     },
     {
-      "id": "learn-dcrpsbt",
-      "topic": "Access Control",
+      "id": "learn-4",
+      "topic": "Active Directory Enumeration & Kerberoasting",
       "domain": "cybersecurity",
-      "lastReviewedAt": "2026-08-16T12:10:56.198Z",
-      "retentionScore": 0.9,
-      "reviewCount": 1,
+      "category": "Active Directory",
+      "lastReviewedAt": "2026-08-10T16:28:15.570Z",
+      "retentionScore": 0.68,
+      "reviewCount": 2,
       "dueStatus": "upcoming"
     }
   ],
   "calendarEvents": [],
   "activities": [
     {
-      "id": "act-4ennmmy",
-      "title": "Created task \"Workout\"",
-      "type": "tasks",
-      "description": "Priority: medium, Category: Exercise",
-      "timestamp": "2026-08-16T16:23:21.613Z"
-    },
-    {
-      "id": "act-npshlnv",
-      "title": "Created task \"Drink 5 liters of water\"",
-      "type": "tasks",
-      "description": "Priority: medium, Category: Personal",
-      "timestamp": "2026-08-16T16:23:21.613Z"
-    },
-    {
-      "id": "act-tpylpqn",
-      "title": "Completed task \"Workout\"",
-      "type": "tasks",
-      "description": "Marked as done in Inbox",
-      "timestamp": "2026-08-16T12:34:01.122Z"
-    },
-    {
-      "id": "act-55tckd6",
-      "title": "Created task \"Practice TryHackMe room\"",
-      "type": "tasks",
-      "description": "Priority: high, Category: Study",
-      "timestamp": "2026-08-16T12:33:13.187Z"
-    },
-    {
-      "id": "act-ddm3qvu",
-      "title": "Created task \"Drink 4 liters of water\"",
-      "type": "tasks",
-      "description": "Priority: medium, Category: Inbox",
-      "timestamp": "2026-08-16T12:33:09.947Z"
-    },
-    {
-      "id": "act-nn44tcc",
-      "title": "Created task \"Workout\"",
-      "type": "tasks",
-      "description": "Priority: high, Category: Inbox",
-      "timestamp": "2026-08-16T12:33:09.946Z"
-    },
-    {
-      "id": "act-wkbzy3y",
-      "title": "Created project \"note banale\"",
-      "type": "projects",
-      "description": "",
-      "timestamp": "2026-08-16T12:12:53.848Z"
-    },
-    {
-      "id": "act-v9xrxu0",
-      "title": "Reviewed topic \"Access Control\"",
+      "id": "act-1",
+      "title": "Completed PortSwigger SQLi Lab",
       "type": "learning",
-      "description": "Completed spaced repetition revision session",
-      "timestamp": "2026-08-16T12:10:56.198Z"
+      "description": "Solved lab on SQL injection UNION attacks querying multiple tables",
+      "timestamp": "2026-08-16T14:28:15.570Z"
     },
     {
-      "id": "act-n1bqryn",
-      "title": "Created task \"web security\"",
-      "type": "tasks",
-      "description": "Priority: critical, Category: Inbox",
-      "timestamp": "2026-08-16T12:01:51.317Z"
+      "id": "act-2",
+      "title": "Created 'Burp Suite Pro Tips' Note",
+      "type": "notes",
+      "description": "Saved request matching rules & intruder payload configurations",
+      "timestamp": "2026-08-16T11:28:15.570Z"
     },
     {
-      "id": "act-mr9faad",
-      "title": "Completed task \"Review SQL Injection & Web Security fundamentals\"",
-      "type": "tasks",
-      "description": "Marked as done in Cybersecurity",
-      "timestamp": "2026-08-16T11:13:08.725Z"
+      "id": "act-3",
+      "title": "Updated AI Assistant Project",
+      "type": "projects",
+      "description": "Integrated Proactive Intelligence Engine with EventBus & ScoringEngine",
+      "timestamp": "2026-08-16T04:28:15.570Z"
     },
     {
-      "id": "act-0x34h5v",
-      "title": "Completed task \"Finish authentication module & permission handler\"",
-      "type": "tasks",
-      "description": "Marked as done in Bella AI Assistant",
-      "timestamp": "2026-08-16T11:13:08.484Z"
-    }
-  ]
-}      "title": "Completed task \"Review SQL Injection & Web Security fundamentals\"",
-      "type": "tasks",
-      "description": "Marked as done in Cybersecurity",
-      "timestamp": "2026-08-16T11:13:08.725Z"
+      "id": "act-4",
+      "title": "Added 12 Cybersecurity Flashcards",
+      "type": "learning",
+      "description": "Added concepts for Kerberos TGT/TGS request mechanics",
+      "timestamp": "2026-08-15T16:28:15.570Z"
     },
     {
-      "id": "act-0x34h5v",
-      "title": "Completed task \"Finish authentication module & permission handler\"",
-      "type": "tasks",
-      "description": "Marked as done in Bella AI Assistant",
-      "timestamp": "2026-08-16T11:13:08.484Z"
+      "id": "act-5",
+      "title": "Completed Network Protocols Revision",
+      "type": "learning",
+      "description": "Reviewed TCP handshake, DNS records, and TLS 1.3 key exchange",
+      "timestamp": "2026-08-15T04:28:15.570Z"
     }
   ]
 }

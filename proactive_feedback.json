@@ -87,6 +87,22 @@
       "type": "learning_suggestion",
       "action": "dismissed",
       "timestamp": "2026-08-16T12:46:25.164Z"
+    },
+    {
+      "id": "ndrqsfv42",
+      "suggestionId": "sug-task-due-task-1",
+      "category": "tasks",
+      "type": "task_suggestion",
+      "action": "accepted",
+      "timestamp": "2026-08-16T16:28:38.327Z"
+    },
+    {
+      "id": "ynt8squj2",
+      "suggestionId": "sug-task-due-task-1",
+      "category": "tasks",
+      "type": "task_suggestion",
+      "action": "dismissed",
+      "timestamp": "2026-08-16T16:30:33.386Z"
     }
   ],
   "weights": {
