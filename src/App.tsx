@@ -1196,9 +1196,9 @@ export default function App() {
         </footer>
       )}
 
-      {/* Holographic Website frame projections */}
+      {/* Holographic Website frame projections — only in full mode so floating character is never obscured */}
       <AnimatePresence>
-        {activeProjectorUrl && (
+        {activeProjectorUrl && !isMiniMode && (
           <BrowserAgent
             url={activeProjectorUrl}
             onClose={() => {
@@ -1210,17 +1210,17 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Dynamic Floating Glassmorphic Screen Sharing Control Hub */}
+      {/* Dynamic Floating Glassmorphic Screen Sharing Control Hub — positioned on bottom-left and hidden in mini mode */}
       <AnimatePresence>
-        {isScreenSharing && (
+        {isScreenSharing && !isMiniMode && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.85, x: 50 }}
+            initial={{ opacity: 0, scale: 0.85, x: -50 }}
             animate={{ opacity: 1, scale: 1, x: 0 }}
-            exit={{ opacity: 0, scale: 0.85, x: 50 }}
-            className={`absolute bottom-6 md:bottom-10 right-6 md:right-10 z-50 w-72 p-4 rounded-2xl border ${
+            exit={{ opacity: 0, scale: 0.85, x: -50 }}
+            className={`fixed bottom-6 md:bottom-10 left-6 md:left-10 z-40 w-72 p-4 rounded-2xl border ${
               isScreenSharingPaused 
-                ? "border-amber-500/20 bg-slate-950/70" 
-                : "border-cyan-500/20 bg-slate-950/70"
+                ? "border-amber-500/20 bg-slate-950/80" 
+                : "border-cyan-500/20 bg-slate-950/80"
             } backdrop-blur-2xl shadow-2xl overflow-hidden`}
           >
             {/* Header / Indicator */}

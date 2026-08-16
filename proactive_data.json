@@ -1,6 +1,24 @@
 {
   "tasks": [
     {
+      "id": "task-rmej58q",
+      "title": "Workout",
+      "category": "Exercise",
+      "priority": "medium",
+      "status": "pending",
+      "estimatedMinutes": 30,
+      "createdAt": "2026-08-16T16:23:21.613Z"
+    },
+    {
+      "id": "task-e8g3yjy",
+      "title": "Drink 5 liters of water",
+      "category": "Personal",
+      "priority": "medium",
+      "status": "pending",
+      "estimatedMinutes": 15,
+      "createdAt": "2026-08-16T16:23:21.613Z"
+    },
+    {
       "id": "task-sekj7qp",
       "title": "Practice TryHackMe room",
       "category": "Study",
@@ -106,6 +124,20 @@
   "calendarEvents": [],
   "activities": [
     {
+      "id": "act-4ennmmy",
+      "title": "Created task \"Workout\"",
+      "type": "tasks",
+      "description": "Priority: medium, Category: Exercise",
+      "timestamp": "2026-08-16T16:23:21.613Z"
+    },
+    {
+      "id": "act-npshlnv",
+      "title": "Created task \"Drink 5 liters of water\"",
+      "type": "tasks",
+      "description": "Priority: medium, Category: Personal",
+      "timestamp": "2026-08-16T16:23:21.613Z"
+    },
+    {
       "id": "act-tpylpqn",
       "title": "Completed task \"Workout\"",
       "type": "tasks",
@@ -157,6 +189,19 @@
     {
       "id": "act-mr9faad",
       "title": "Completed task \"Review SQL Injection & Web Security fundamentals\"",
+      "type": "tasks",
+      "description": "Marked as done in Cybersecurity",
+      "timestamp": "2026-08-16T11:13:08.725Z"
+    },
+    {
+      "id": "act-0x34h5v",
+      "title": "Completed task \"Finish authentication module & permission handler\"",
+      "type": "tasks",
+      "description": "Marked as done in Bella AI Assistant",
+      "timestamp": "2026-08-16T11:13:08.484Z"
+    }
+  ]
+}      "title": "Completed task \"Review SQL Injection & Web Security fundamentals\"",
       "type": "tasks",
       "description": "Marked as done in Cybersecurity",
       "timestamp": "2026-08-16T11:13:08.725Z"
