@@ -64,10 +64,33 @@
       "lastReviewedAt": "2026-07-27T07:26:37.689Z",
       "retentionScore": 0.5,
       "reviewCount": 1
+    },
+    {
+      "id": "learn-dcrpsbt",
+      "topic": "Access Control",
+      "domain": "cybersecurity",
+      "lastReviewedAt": "2026-08-16T12:10:56.198Z",
+      "retentionScore": 0.9,
+      "reviewCount": 1,
+      "dueStatus": "upcoming"
     }
   ],
   "calendarEvents": [],
   "activities": [
+    {
+      "id": "act-wkbzy3y",
+      "title": "Created project \"note banale\"",
+      "type": "projects",
+      "description": "",
+      "timestamp": "2026-08-16T12:12:53.848Z"
+    },
+    {
+      "id": "act-v9xrxu0",
+      "title": "Reviewed topic \"Access Control\"",
+      "type": "learning",
+      "description": "Completed spaced repetition revision session",
+      "timestamp": "2026-08-16T12:10:56.198Z"
+    },
     {
       "id": "act-n1bqryn",
       "title": "Created task \"web security\"",

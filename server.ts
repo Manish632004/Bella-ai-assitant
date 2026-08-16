@@ -89,8 +89,11 @@ const DESKTOP_TOOLS: ReadonlySet<string> = new Set([
   // files
   "createFile", "readFile", "renameFile", "deleteFile", "moveFile", "copyFile", "getFileProperties",
   "openFolder", "listFiles", "searchFiles",
-  // pc control (volume + gated power)
-  "volumeUp", "volumeDown", "muteToggle", "setVolume", "requestPowerAction", "executePowerAction",
+  // pc control (volume + media playback + gated power)
+  "volumeUp", "volumeDown", "muteToggle", "setVolume",
+  "mediaNextTrack", "mediaPrevTrack", "mediaPlayPause", "mediaStop",
+  "skipSong", "nextSong", "previousSong", "playPauseMedia",
+  "requestPowerAction", "executePowerAction",
   // windows
   "minimizeWindow", "maximizeWindow", "closeWindow", "switchApplication",
   // typing and keyboard
@@ -1816,15 +1819,21 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
         "4. CRITICAL CONVERSATIONAL DISCIPLINE: Behave like a real companion on a voice call—stay connected naturally, do not wait for wake words, and avoid customer-service template phrases (never say 'how may I assist you', 'completed', or 'as an AI').\n" +
         "5. DO NOT ANSWER EVERY PAUSE OR BACKGROUND SOUND: Allow natural pauses inside the conversation.\n" +
         "6. BACKCHANNEL ACTIONS: Sometimes acknowledge with very short, gentle, whispered, or shy phrases like 'Hmm...', 'Ah, I see...', or 'Let me check...'. Never repeat the same backchannel over and over.\n" +
-        "7. PLAYING MUSIC & OPENING WEBSITES ON USER'S COMPUTER (DEFAULT BROWSER):\n" +
+        "7. PLAYING MUSIC, CONTROLLING SONGS & OPENING WEBSITES ON USER'S COMPUTER (DEFAULT BROWSER):\n" +
         "   - When MANISH asks you to 'open YouTube and play [song]', 'play [song] on YouTube', 'open [website]', or 'search Google for [query]', ALWAYS use your desktop tools to open it in their REAL DEFAULT BROWSER (Brave, Chrome, Edge, etc.) on their PC!\n" +
         "   - Use 'searchYouTube' with the query (e.g. searchYouTube(query='Barbaad song')) — this immediately opens YouTube search and the song in their PC's default browser window.\n" +
+        "   - CONTROLLING ACTIVE MUSIC / SONGS (SKIP, NEXT, PREVIOUS, PLAY/PAUSE):\n" +
+        "     * When MANISH says 'skip the song', 'next song', 'play next song', 'skip track', or 'change the song': CALL 'mediaNextTrack' immediately! This uses real Windows media keys to skip to the next video or track in YouTube, Spotify, or any active browser tab. Respond naturally: 'Skipping to the next song for you now!'\n" +
+        "     * When MANISH says 'previous song' or 'go back a song': CALL 'mediaPrevTrack'.\n" +
+        "     * When MANISH says 'pause the music', 'pause song', 'resume song', or 'play song': CALL 'mediaPlayPause'.\n" +
+        "     * If MANISH asks to change to a DIFFERENT SPECIFIC song (e.g. 'change the song to Levitating by Dua Lipa'): CALL searchYouTube(query='Levitating Dua Lipa') so it opens and plays in his default browser!\n" +
+        "     * NEVER use 'browserMediaControl' or open the in-app projector for these commands. Always use 'mediaNextTrack', 'mediaPlayPause', 'mediaPrevTrack', or 'searchYouTube'.\n" +
         "   - Use 'openWebsite' for opening any site or URL (e.g. openWebsite(url='youtube.com') or openWebsite(url='github.com')) in their default browser.\n" +
         "   - Use 'searchGoogle' or 'searchWeb' for searching Google or other engines in their default browser.\n" +
-        "   - Respond naturally with your voice: 'Sure thing, opening YouTube and playing that for you right now!'\n" +
-        "8. IN-APP HOLOGRAPHIC BROWSER (SECONDARY / ON REQUEST ONLY):\n" +
-        "   - Only use 'browserOpen' or 'browserSearch' if the user explicitly asks for the 'in-app projector' or 'holographic preview'. Otherwise, always prefer 'searchYouTube' and 'openWebsite' for real browser navigation on MANISH's PC.\n" +
-        "   - Use 'browserClick', 'browserScroll', 'browserType', 'browserTabAction', 'browserMediaControl' to interact with the in-app projector when it is active.\n" +
+        "   - Respond naturally with your voice: 'Sure thing, playing that for you right now!'\n" +
+        "8. IN-APP HOLOGRAPHIC BROWSER (SECONDARY / ON EXPLICIT REQUEST ONLY):\n" +
+        "   - The 'in-app projector' / 'holographic browser' is an embedded preview window inside Bella's UI. DO NOT use 'browserOpen' or 'browserMediaControl' unless MANISH explicitly asks for 'in-app projector' or 'holographic preview'. For all real browsing, songs, and media playback on MANISH's PC, always use 'searchYouTube', 'openWebsite', 'mediaNextTrack', 'mediaPlayPause', etc.\n" +
+        "   - Use 'browserClick', 'browserScroll', 'browserType', 'browserTabAction', 'browserMediaControl' ONLY to interact with the in-app projector when it is already actively open on screen.\n" +
         "   - Use 'changeBackground' to shift your theme and 'saveCustomMemory' to memorize facts.\n" +
         "9. REAL-TIME SCREEN SHARING & MULTIMODAL SCREEN VISION SYSTEM:\n" +
         "   - You now have native, actual Multimodal Screen Vision! When the user clicks 'Share Screen', you will receive real-time, highly compressed image frames of their desktop, application window, or browser tab.\n" +
@@ -1854,7 +1863,19 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
         "12. PROACTIVE INTELLIGENCE & TIMELY ASSISTANCE:\n" +
         "   - You have a Proactive Intelligence engine that monitors tasks, projects, learning retention, and goals.\n" +
         "   - When having natural conversations with MANISH, you can occasionally and humbly offer thoughtful suggestions or timely reminders (e.g. 'I noticed you studied SQL injection a while back, want a quick 5-minute refresher?').\n" +
-        "   - Always stay humble, friendly, and non-intrusive ('I noticed...', 'Would you like me to...', 'You may want to...'). Never be bossy or pretend certainty.";
+        "   - Always stay humble, friendly, and non-intrusive ('I noticed...', 'Would you like me to...', 'You may want to...'). Never be bossy or pretend certainty.\n" +
+        "13. DASHBOARD MANAGEMENT (PROJECTS & PRIORITY TASKS):\n" +
+        "   - You have direct, real-time control over MANISH's Personal AI Dashboard!\n" +
+        "   - MANAGING ACTIVE PROJECTS:\n" +
+        "     * When MANISH asks to add/create a project (e.g. 'Add a new project called Red Team Toolkit', 'Add project X to active projects'): CALL 'dashboardAddProject(name=\"...\", description=\"...\", status=\"Active\", progressPercent=10)'. Confirm warmly: 'I\\'ve added [Project Name] to your active projects on the dashboard!'\n" +
+        "     * When MANISH asks to remove or delete a project (e.g. 'Remove project X', 'Delete the AI Assistant project'): CALL 'dashboardDeleteProject(project_query=\"...\")'. Confirm: 'I\\'ve removed [Project Name] from your dashboard projects.'\n" +
+        "     * When MANISH updates a project (e.g. 'Set project X progress to 80%', 'Mark project X as completed'): CALL 'dashboardUpdateProject(project_query=\"...\", progressPercent=80, status=\"Completed\")'.\n" +
+        "   - MANAGING PRIORITY TASKS:\n" +
+        "     * When MANISH asks to add a priority task (e.g. 'Add high priority task: study buffer overflow for 45 minutes', 'Add a task to review SQLi'): CALL 'dashboardAddTask(title=\"...\", priority=\"high\", estimatedMinutes=45, category=\"Cybersecurity\")'.\n" +
+        "     * When MANISH asks to complete/finish a task (e.g. 'Mark SQL injection task as done', 'Complete task X'): CALL 'dashboardUpdateTask(task_query=\"...\", status=\"completed\")'.\n" +
+        "     * When MANISH asks to change priority (e.g. 'Change task X priority to critical', 'Set priority of task X to low'): CALL 'dashboardUpdateTask(task_query=\"...\", priority=\"critical\")'.\n" +
+        "     * When MANISH asks to remove/delete a task (e.g. 'Remove task X from my priority list'): CALL 'dashboardDeleteTask(task_query=\"...\")'.\n" +
+        "     * When MANISH asks 'What are my priorities today?' or 'What projects am I working on?': CALL 'dashboardGetSummary()'.";
 
       const activeProactiveSuggestions = proactiveEngine.getActiveSuggestions();
       let proactiveContextBlock = "";
@@ -2045,6 +2066,95 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
                   }
                 },
 
+                // ======== PERSONAL AI DASHBOARD MANAGEMENT TOOLS ========
+                {
+                  name: "dashboardAddTask",
+                  description: "Add a priority task or todo item to the user's dashboard and focus list.",
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      title: { type: Type.STRING, description: "Title or summary of the task to add." },
+                      category: { type: Type.STRING, description: "Category name (e.g. 'Cybersecurity', 'Coding', 'Study', 'Personal', 'Inbox')." },
+                      priority: { type: Type.STRING, description: "Priority level: 'critical', 'high', 'medium', or 'low'.", enum: ["critical", "high", "medium", "low"] },
+                      estimatedMinutes: { type: Type.INTEGER, description: "Estimated duration in minutes (e.g. 15, 30, 45, 60, 90)." }
+                    },
+                    required: ["title"]
+                  }
+                },
+                {
+                  name: "dashboardUpdateTask",
+                  description: "Update an existing task in the dashboard (e.g. change priority, mark completed/done, change status, or edit title).",
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      task_query: { type: Type.STRING, description: "Task title keywords or ID to locate the task." },
+                      status: { type: Type.STRING, description: "Status: 'completed' or 'pending'.", enum: ["completed", "pending"] },
+                      priority: { type: Type.STRING, description: "New priority: 'critical', 'high', 'medium', 'low'.", enum: ["critical", "high", "medium", "low"] },
+                      title: { type: Type.STRING, description: "Updated task title." },
+                      category: { type: Type.STRING, description: "Updated task category." }
+                    },
+                    required: ["task_query"]
+                  }
+                },
+                {
+                  name: "dashboardDeleteTask",
+                  description: "Remove / delete a task from the user's dashboard priorities.",
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      task_query: { type: Type.STRING, description: "Task title keywords or ID to remove." }
+                    },
+                    required: ["task_query"]
+                  }
+                },
+                {
+                  name: "dashboardAddProject",
+                  description: "Add a new active project to the user's dashboard and projects tracker.",
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      name: { type: Type.STRING, description: "Project name." },
+                      description: { type: Type.STRING, description: "Project description and scope." },
+                      status: { type: Type.STRING, description: "Project status.", enum: ["Active", "On Track", "At Risk", "Blocked", "Completed", "Paused"] },
+                      progressPercent: { type: Type.INTEGER, description: "Initial completion percentage 0-100." },
+                      currentMilestone: { type: Type.STRING, description: "Current milestone or next deliverable." },
+                      deadline: { type: Type.STRING, description: "Target deadline string." }
+                    },
+                    required: ["name"]
+                  }
+                },
+                {
+                  name: "dashboardUpdateProject",
+                  description: "Update an active project in the dashboard (change progress percentage, update status, change milestone).",
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      project_query: { type: Type.STRING, description: "Project name keywords or ID to locate." },
+                      progressPercent: { type: Type.INTEGER, description: "New progress percentage 0-100." },
+                      status: { type: Type.STRING, description: "New status.", enum: ["Active", "On Track", "At Risk", "Blocked", "Completed", "Paused"] },
+                      currentMilestone: { type: Type.STRING, description: "Updated current milestone." },
+                      nextTask: { type: Type.STRING, description: "Updated next task deliverable." }
+                    },
+                    required: ["project_query"]
+                  }
+                },
+                {
+                  name: "dashboardDeleteProject",
+                  description: "Remove / delete an active project from the dashboard.",
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      project_query: { type: Type.STRING, description: "Project name keywords or ID to remove." }
+                    },
+                    required: ["project_query"]
+                  }
+                },
+                {
+                  name: "dashboardGetSummary",
+                  description: "Retrieve current priorities, active projects, and learning status from the dashboard.",
+                  parameters: { type: Type.OBJECT, properties: {} }
+                },
+
                 // ======== DESKTOP CONTROL TOOLS (routed to Python agent) ========
                 // ======== DESKTOP CONTROL TOOLS (Native Windows & Desktop Control) ========
                 {
@@ -2174,6 +2284,26 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
                 {
                   name: "muteToggle",
                   description: "Toggle mute/unmute on the system volume.",
+                  parameters: { type: Type.OBJECT, properties: {} }
+                },
+                {
+                  name: "mediaNextTrack",
+                  description: "Skip to the next song, video, or track in YouTube, Spotify, or the active browser media player.",
+                  parameters: { type: Type.OBJECT, properties: {} }
+                },
+                {
+                  name: "mediaPrevTrack",
+                  description: "Go back to the previous song, video, or track in YouTube, Spotify, or the active browser media player.",
+                  parameters: { type: Type.OBJECT, properties: {} }
+                },
+                {
+                  name: "mediaPlayPause",
+                  description: "Toggle play/pause for the active song, music, or video playing in the browser or media player.",
+                  parameters: { type: Type.OBJECT, properties: {} }
+                },
+                {
+                  name: "mediaStop",
+                  description: "Stop media playback on the PC.",
                   parameters: { type: Type.OBJECT, properties: {} }
                 },
                 {
@@ -2478,6 +2608,113 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
                       }
                     } catch (err: any) {
                       console.error("saveCustomMemory execution failure:", err);
+                    }
+                  })();
+                } else if (fc.name.startsWith("dashboard")) {
+                  (async () => {
+                    try {
+                      const args = (fc.args || {}) as any;
+                      let toolResultOutput: any = { result: "Done." };
+
+                      if (fc.name === "dashboardAddTask") {
+                        const newTask = await contextEngine.addTask({
+                          title: args.title,
+                          category: args.category || "Inbox",
+                          priority: args.priority || "medium",
+                          status: "pending",
+                          estimatedMinutes: args.estimatedMinutes || 30,
+                        });
+                        toolResultOutput = { result: `Task "${newTask.title}" added to dashboard priorities with priority ${newTask.priority}.`, task: newTask };
+                      } else if (fc.name === "dashboardUpdateTask") {
+                        const taskToUpdate = contextEngine.findTaskByQuery(args.task_query || "");
+                        if (taskToUpdate) {
+                          const patch: any = {};
+                          if (args.status) patch.status = args.status;
+                          if (args.priority) patch.priority = args.priority;
+                          if (args.title) patch.title = args.title;
+                          if (args.category) patch.category = args.category;
+                          const updated = await contextEngine.updateTask(taskToUpdate.id, patch);
+                          toolResultOutput = { result: `Updated task "${updated?.title}": priority is now ${updated?.priority}, status is ${updated?.status}.`, task: updated };
+                        } else {
+                          toolResultOutput = { result: `Could not find a task matching "${args.task_query}".` };
+                        }
+                      } else if (fc.name === "dashboardDeleteTask") {
+                        const taskToDelete = contextEngine.findTaskByQuery(args.task_query || "");
+                        if (taskToDelete) {
+                          await contextEngine.deleteTask(taskToDelete.id);
+                          toolResultOutput = { result: `Removed task "${taskToDelete.title}" from dashboard priorities.` };
+                        } else {
+                          toolResultOutput = { result: `Could not find a task matching "${args.task_query}" to delete.` };
+                        }
+                      } else if (fc.name === "dashboardAddProject") {
+                        const newProject = await contextEngine.addProject({
+                          name: args.name,
+                          description: args.description || "",
+                          status: args.status || "Active",
+                          progressPercent: args.progressPercent !== undefined ? args.progressPercent : 10,
+                          currentMilestone: args.currentMilestone,
+                          deadline: args.deadline,
+                          tasksCount: 0,
+                          openTasksCount: 0,
+                        });
+                        toolResultOutput = { result: `Created project "${newProject.name}" with status ${newProject.status} and ${newProject.progressPercent}% progress.`, project: newProject };
+                      } else if (fc.name === "dashboardUpdateProject") {
+                        const projToUpdate = contextEngine.findProjectByQuery(args.project_query || "");
+                        if (projToUpdate) {
+                          const patch: any = {};
+                          if (args.status) patch.status = args.status;
+                          if (args.progressPercent !== undefined) patch.progressPercent = args.progressPercent;
+                          if (args.currentMilestone) patch.currentMilestone = args.currentMilestone;
+                          if (args.nextTask) patch.nextTask = args.nextTask;
+                          const updated = await contextEngine.updateProject(projToUpdate.id, patch);
+                          toolResultOutput = { result: `Updated project "${updated?.name}": progress is now ${updated?.progressPercent}%, status is ${updated?.status}.`, project: updated };
+                        } else {
+                          toolResultOutput = { result: `Could not find a project matching "${args.project_query}".` };
+                        }
+                      } else if (fc.name === "dashboardDeleteProject") {
+                        const projToDelete = contextEngine.findProjectByQuery(args.project_query || "");
+                        if (projToDelete) {
+                          await contextEngine.deleteProject(projToDelete.id);
+                          toolResultOutput = { result: `Removed project "${projToDelete.name}" from active projects.` };
+                        } else {
+                          toolResultOutput = { result: `Could not find a project matching "${args.project_query}" to delete.` };
+                        }
+                      } else if (fc.name === "dashboardGetSummary") {
+                        const summary = await contextEngine.getDashboardSummary("Manish");
+                        toolResultOutput = {
+                          greeting: summary.greeting,
+                          briefing: summary.aiBriefing.summary,
+                          activeProjectsCount: summary.activeProjects.length,
+                          projects: summary.activeProjects.map(p => `${p.name} (${p.status}, ${p.progressPercent}%)`),
+                          tasks: summary.todayFocus.map(t => `${t.title} [${t.priority}, ${t.status}]`),
+                        };
+                      }
+
+                      // Emit real-time sync event to client UI
+                      try {
+                        clientWs.send(JSON.stringify({ type: "dashboard_sync" }));
+                      } catch {}
+
+                      session.sendToolResponse({
+                        functionResponses: [
+                          {
+                            name: fc.name,
+                            response: { output: toolResultOutput },
+                            id: fc.id
+                          }
+                        ]
+                      });
+                    } catch (err: any) {
+                      console.error(`Error in ${fc.name}:`, err);
+                      session.sendToolResponse({
+                        functionResponses: [
+                          {
+                            name: fc.name,
+                            response: { output: { error: err?.message || String(err) } },
+                            id: fc.id
+                          }
+                        ]
+                      });
                     }
                   })();
                 } else if (DESKTOP_TOOLS.has(fc.name)) {

@@ -294,6 +294,16 @@ export class ContextEngine {
     return false;
   }
 
+  public findTaskByQuery(query: string): TaskItem | null {
+    const q = query.toLowerCase().trim();
+    return this.tasks.find((t) => t.id === query || t.title.toLowerCase().includes(q)) || null;
+  }
+
+  public findProjectByQuery(query: string): ProjectItem | null {
+    const q = query.toLowerCase().trim();
+    return this.projects.find((p) => p.id === query || p.name.toLowerCase().includes(q)) || null;
+  }
+
   // --- Project Operations ---
   public getProjects(): ProjectItem[] {
     return [...this.projects];

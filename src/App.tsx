@@ -702,6 +702,10 @@ export default function App() {
           setMemories(updatedMemories);
         }
       },
+      onDashboardSync: () => {
+        console.log("[App] WebSocket dashboard sync triggered from voice tool execution");
+        window.dispatchEvent(new CustomEvent("bella:dashboard_sync"));
+      },
       onMiniModeChange: (enabled) => {
         console.log("[App] Mini mode transition triggered:", enabled);
         setIsMiniMode(enabled);

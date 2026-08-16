@@ -1,4 +1,4 @@
-﻿"""
+"""
 BELLA Desktop Control Agent â€” Central tool registry.
 
 Each tool module registers handlers into a flat dict `TOOLS` mapping
@@ -91,11 +91,19 @@ DESKTOP_TOOL_NAMES = [
     "openFolder",
     "listFiles",
     "searchFiles",
-    # pc control (volume + gated power)
+    # pc control (volume + media playback + gated power)
     "volumeUp",
     "volumeDown",
     "muteToggle",
     "setVolume",
+    "mediaNextTrack",
+    "mediaPrevTrack",
+    "mediaPlayPause",
+    "mediaStop",
+    "skipSong",
+    "nextSong",
+    "previousSong",
+    "playPauseMedia",
     "requestPowerAction",  # first step: issues a confirmation token
     "executePowerAction",  # second step: runs the gated action
     # windows

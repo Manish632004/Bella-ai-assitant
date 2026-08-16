@@ -47,12 +47,28 @@
       "type": "project_suggestion",
       "action": "snoozed",
       "timestamp": "2026-08-16T12:01:03.255Z"
+    },
+    {
+      "id": "h2smgpsy7",
+      "suggestionId": "sug-project-inactive-proj-1",
+      "category": "projects",
+      "type": "project_suggestion",
+      "action": "dismissed",
+      "timestamp": "2026-08-16T12:09:25.902Z"
+    },
+    {
+      "id": "3z4q1ztjl",
+      "suggestionId": "sug-learning-review-learn-1",
+      "category": "learning",
+      "type": "learning_suggestion",
+      "action": "dismissed",
+      "timestamp": "2026-08-16T12:24:47.713Z"
     }
   ],
   "weights": {
     "tasks": 0.8999999999999999,
-    "projects": 1,
-    "learning": 0.8999999999999999,
+    "projects": 0.95,
+    "learning": 0.7499999999999999,
     "calendar": 1,
     "coding": 1,
     "cybersecurity": 1.1,
@@ -64,6 +80,7 @@
   },
   "dismissals": {
     "tasks": 2,
-    "learning": 2
+    "learning": 3,
+    "projects": 1
   }
 }

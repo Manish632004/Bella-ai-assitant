@@ -86,6 +86,7 @@ export class BellaAudioSession {
   private onToolCall: (name: string, args: any, callback: (result: any) => void) => void;
   private onError: (error: string) => void;
   private onMemorySync?: (memories: any[]) => void;
+  private onDashboardSync?: () => void;
   
   private currentState: LiveState = "disconnected";
   private isActivated = false;
@@ -100,6 +101,7 @@ export class BellaAudioSession {
     onToolCall: (name: string, args: any, callback: (result: any) => void) => void;
     onError: (error: string) => void;
     onMemorySync?: (memories: any[]) => void;
+    onDashboardSync?: () => void;
     onMiniModeChange?: (enabled: boolean) => void;
     onProactiveInit?: (settings: any, suggestions: any[]) => void;
     onProactiveSuggestion?: (suggestion: any) => void;
@@ -110,6 +112,7 @@ export class BellaAudioSession {
     this.onToolCall = handlers.onToolCall;
     this.onError = handlers.onError;
     this.onMemorySync = handlers.onMemorySync;
+    this.onDashboardSync = handlers.onDashboardSync;
     this.onMiniModeChange = handlers.onMiniModeChange;
     this.onProactiveInit = handlers.onProactiveInit;
     this.onProactiveSuggestion = handlers.onProactiveSuggestion;
@@ -315,6 +318,11 @@ export class BellaAudioSession {
             if (this.onMemorySync) {
               this.onMemorySync(data.memories);
             }
+          }
+
+          // Handle dashboard synchronization (live updates from voice tools)
+          if (data.type === "dashboard_sync" && this.onDashboardSync) {
+            this.onDashboardSync();
           }
 
           // Handle proactive intelligence init

@@ -90,8 +90,12 @@ def _set_volume_scalar(value: float) -> None:
 
 # VK codes for media keys
 VK_VOLUME_MUTE = 0xAD
-VK_VOLUME_UP = 0xAF
 VK_VOLUME_DOWN = 0xAE
+VK_VOLUME_UP = 0xAF
+VK_MEDIA_NEXT_TRACK = 0xB0
+VK_MEDIA_PREV_TRACK = 0xB1
+VK_MEDIA_STOP = 0xB2
+VK_MEDIA_PLAY_PAUSE = 0xB3
 KEYEVENTF_KEYUP = 0x0002
 
 
@@ -111,6 +115,14 @@ def _press_vk(vk: int) -> None:
                 pyautogui.press("volumedown")
             elif vk == VK_VOLUME_MUTE:
                 pyautogui.press("volumemute")
+            elif vk == VK_MEDIA_NEXT_TRACK:
+                pyautogui.press("nexttrack")
+            elif vk == VK_MEDIA_PREV_TRACK:
+                pyautogui.press("prevtrack")
+            elif vk == VK_MEDIA_PLAY_PAUSE:
+                pyautogui.press("playpause")
+            elif vk == VK_MEDIA_STOP:
+                pyautogui.press("stop")
         except Exception:
             pass
 
@@ -198,6 +210,41 @@ def set_volume(args: Dict[str, Any]) -> Dict[str, Any]:
 def mute_toggle(args: Dict[str, Any]) -> Dict[str, Any]:
     muted = _toggle_mute_pycaw()
     return {"result": "Muted." if muted else "Unmuted."}
+
+
+# --- Media playback controls (YouTube, Spotify, Windows Media, Browser) ------
+
+
+@register("mediaNextTrack")
+@register("skipSong")
+@register("nextSong")
+def media_next_track(args: Dict[str, Any] = None) -> Dict[str, Any]:
+    """Skip to the next song or track in the browser (YouTube/Spotify) or desktop media player."""
+    _press_vk(VK_MEDIA_NEXT_TRACK)
+    return {"result": "Skipped to the next song/track."}
+
+
+@register("mediaPrevTrack")
+@register("previousSong")
+def media_prev_track(args: Dict[str, Any] = None) -> Dict[str, Any]:
+    """Go back to the previous song or track."""
+    _press_vk(VK_MEDIA_PREV_TRACK)
+    return {"result": "Returned to the previous song/track."}
+
+
+@register("mediaPlayPause")
+@register("playPauseMedia")
+def media_play_pause(args: Dict[str, Any] = None) -> Dict[str, Any]:
+    """Toggle play / pause for the currently active song, music, or video playback."""
+    _press_vk(VK_MEDIA_PLAY_PAUSE)
+    return {"result": "Toggled play/pause."}
+
+
+@register("mediaStop")
+def media_stop(args: Dict[str, Any] = None) -> Dict[str, Any]:
+    """Stop ongoing media playback."""
+    _press_vk(VK_MEDIA_STOP)
+    return {"result": "Media playback stopped."}
 
 
 # --- Gated power actions -----------------------------------------------------
