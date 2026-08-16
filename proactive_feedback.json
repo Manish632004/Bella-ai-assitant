@@ -63,11 +63,27 @@
       "type": "learning_suggestion",
       "action": "dismissed",
       "timestamp": "2026-08-16T12:24:47.713Z"
+    },
+    {
+      "id": "dsuyzrb70",
+      "suggestionId": "sug-project-inactive-proj-1",
+      "category": "projects",
+      "type": "project_suggestion",
+      "action": "dismissed",
+      "timestamp": "2026-08-16T12:34:43.784Z"
+    },
+    {
+      "id": "mkih4130a",
+      "suggestionId": "sug-project-inactive-proj-1",
+      "category": "projects",
+      "type": "project_suggestion",
+      "action": "dismissed",
+      "timestamp": "2026-08-16T12:38:37.262Z"
     }
   ],
   "weights": {
     "tasks": 0.8999999999999999,
-    "projects": 0.95,
+    "projects": 0.7499999999999999,
     "learning": 0.7499999999999999,
     "calendar": 1,
     "coding": 1,
@@ -81,6 +97,6 @@
   "dismissals": {
     "tasks": 2,
     "learning": 3,
-    "projects": 1
+    "projects": 3
   }
 }

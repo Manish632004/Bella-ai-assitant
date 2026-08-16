@@ -1,6 +1,34 @@
 {
   "tasks": [
     {
+      "id": "task-sekj7qp",
+      "title": "Practice TryHackMe room",
+      "category": "Study",
+      "priority": "high",
+      "status": "pending",
+      "estimatedMinutes": 30,
+      "createdAt": "2026-08-16T12:33:13.187Z"
+    },
+    {
+      "id": "task-e3ag994",
+      "title": "Drink 4 liters of water",
+      "category": "Inbox",
+      "priority": "medium",
+      "status": "pending",
+      "estimatedMinutes": 30,
+      "createdAt": "2026-08-16T12:33:09.947Z"
+    },
+    {
+      "id": "task-2k92qit",
+      "title": "Workout",
+      "category": "Inbox",
+      "priority": "high",
+      "status": "completed",
+      "estimatedMinutes": 45,
+      "createdAt": "2026-08-16T12:33:09.946Z",
+      "updatedAt": "2026-08-16T12:34:01.122Z"
+    },
+    {
       "id": "task-1",
       "title": "Finish authentication module & permission handler",
       "category": "Bella AI Assistant",
@@ -77,6 +105,34 @@
   ],
   "calendarEvents": [],
   "activities": [
+    {
+      "id": "act-tpylpqn",
+      "title": "Completed task \"Workout\"",
+      "type": "tasks",
+      "description": "Marked as done in Inbox",
+      "timestamp": "2026-08-16T12:34:01.122Z"
+    },
+    {
+      "id": "act-55tckd6",
+      "title": "Created task \"Practice TryHackMe room\"",
+      "type": "tasks",
+      "description": "Priority: high, Category: Study",
+      "timestamp": "2026-08-16T12:33:13.187Z"
+    },
+    {
+      "id": "act-ddm3qvu",
+      "title": "Created task \"Drink 4 liters of water\"",
+      "type": "tasks",
+      "description": "Priority: medium, Category: Inbox",
+      "timestamp": "2026-08-16T12:33:09.947Z"
+    },
+    {
+      "id": "act-nn44tcc",
+      "title": "Created task \"Workout\"",
+      "type": "tasks",
+      "description": "Priority: high, Category: Inbox",
+      "timestamp": "2026-08-16T12:33:09.946Z"
+    },
     {
       "id": "act-wkbzy3y",
       "title": "Created project \"note banale\"",

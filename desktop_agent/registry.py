@@ -104,6 +104,10 @@ DESKTOP_TOOL_NAMES = [
     "nextSong",
     "previousSong",
     "playPauseMedia",
+    "changeSong",
+    "playSong",
+    "pauseSong",
+    "resumeSong",
     "requestPowerAction",  # first step: issues a confirmation token
     "executePowerAction",  # second step: runs the gated action
     # windows

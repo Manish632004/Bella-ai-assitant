@@ -93,6 +93,7 @@ const DESKTOP_TOOLS: ReadonlySet<string> = new Set([
   "volumeUp", "volumeDown", "muteToggle", "setVolume",
   "mediaNextTrack", "mediaPrevTrack", "mediaPlayPause", "mediaStop",
   "skipSong", "nextSong", "previousSong", "playPauseMedia",
+  "changeSong", "playSong", "pauseSong", "resumeSong",
   "requestPowerAction", "executePowerAction",
   // windows
   "minimizeWindow", "maximizeWindow", "closeWindow", "switchApplication",
@@ -2284,6 +2285,16 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
                 {
                   name: "muteToggle",
                   description: "Toggle mute/unmute on the system volume.",
+                  parameters: { type: Type.OBJECT, properties: {} }
+                },
+                {
+                  name: "changeSong",
+                  description: "Change the currently playing song in the browser, play a new song on YouTube, or skip to the next track. If query is provided, searches and plays that song on YouTube in the default browser.",
+                  parameters: { type: Type.OBJECT, properties: { query: { type: Type.STRING, description: "Song name, artist, or music title to play (e.g. 'Arijit Singh song', 'Kesariya', 'Levitating'). Optional if skipping." } } }
+                },
+                {
+                  name: "skipSong",
+                  description: "Skip to the next song or track in YouTube or Spotify playing in the browser or PC.",
                   parameters: { type: Type.OBJECT, properties: {} }
                 },
                 {

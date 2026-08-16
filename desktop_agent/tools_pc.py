@@ -215,12 +215,85 @@ def mute_toggle(args: Dict[str, Any]) -> Dict[str, Any]:
 # --- Media playback controls (YouTube, Spotify, Windows Media, Browser) ------
 
 
+def _send_youtube_shortcut(action: str) -> bool:
+    """If a YouTube or browser media window is open, send direct keyboard shortcuts."""
+    if platform.system() != "Windows":
+        return False
+    try:
+        import win32gui
+        matches = []
+
+        def enum_cb(hwnd, _):
+            if win32gui.IsWindowVisible(hwnd):
+                title = win32gui.GetWindowText(hwnd)
+                if title and ("youtube" in title.lower() or "spotify" in title.lower()):
+                    matches.append((hwnd, title))
+            return True
+
+        win32gui.EnumWindows(enum_cb, None)
+        if matches:
+            hwnd, title = matches[0]
+            try:
+                import win32con
+                win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+                win32gui.SetForegroundWindow(hwnd)
+                time.sleep(0.08)
+            except Exception:
+                pass
+
+            try:
+                import pyautogui
+                if action == "next":
+                    pyautogui.hotkey("shift", "n")
+                elif action == "prev":
+                    pyautogui.hotkey("shift", "p")
+                elif action == "playpause":
+                    pyautogui.press("k")
+                return True
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return False
+
+
+@register("changeSong")
+@register("playSong")
+def change_song(args: Dict[str, Any] = None) -> Dict[str, Any]:
+    """Change the currently playing song or play a requested song on YouTube in the user's default browser."""
+    args = args or {}
+    query = args.get("query") or args.get("song") or args.get("name") or args.get("title")
+    if query:
+        from .tools_websites import _build_search_url, open_url
+        url = _build_search_url("youtube", str(query))
+        resolved = open_url(url)
+        return {"result": f"Changed song: playing '{query}' on YouTube ({resolved})."}
+
+    # If no specific query given, skip to the next track
+    return media_next_track(args)
+
+
 @register("mediaNextTrack")
 @register("skipSong")
 @register("nextSong")
 def media_next_track(args: Dict[str, Any] = None) -> Dict[str, Any]:
     """Skip to the next song or track in the browser (YouTube/Spotify) or desktop media player."""
+    args = args or {}
+    query = args.get("query") or args.get("song") or args.get("name") or args.get("title")
+    if query:
+        from .tools_websites import _build_search_url, open_url
+        url = _build_search_url("youtube", str(query))
+        resolved = open_url(url)
+        return {"result": f"Playing '{query}' on YouTube ({resolved})."}
+
+    # 1. Send global Windows hardware media key
     _press_vk(VK_MEDIA_NEXT_TRACK)
+
+    # 2. Also send YouTube shortcut if a browser YouTube window is active
+    yt_handled = _send_youtube_shortcut("next")
+
+    if yt_handled:
+        return {"result": "Skipped to the next video/song on YouTube."}
     return {"result": "Skipped to the next song/track."}
 
 
@@ -229,15 +302,19 @@ def media_next_track(args: Dict[str, Any] = None) -> Dict[str, Any]:
 def media_prev_track(args: Dict[str, Any] = None) -> Dict[str, Any]:
     """Go back to the previous song or track."""
     _press_vk(VK_MEDIA_PREV_TRACK)
+    _send_youtube_shortcut("prev")
     return {"result": "Returned to the previous song/track."}
 
 
 @register("mediaPlayPause")
 @register("playPauseMedia")
+@register("pauseSong")
+@register("resumeSong")
 def media_play_pause(args: Dict[str, Any] = None) -> Dict[str, Any]:
     """Toggle play / pause for the currently active song, music, or video playback."""
     _press_vk(VK_MEDIA_PLAY_PAUSE)
-    return {"result": "Toggled play/pause."}
+    _send_youtube_shortcut("playpause")
+    return {"result": "Toggled play/pause for active song/video."}
 
 
 @register("mediaStop")
