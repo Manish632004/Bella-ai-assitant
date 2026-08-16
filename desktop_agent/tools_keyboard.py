@@ -87,11 +87,40 @@ def keyboard_type(args: Dict[str, Any]) -> Dict[str, Any]:
         return paste_clipboard({"text": text})
 
 
+@register("pressEnter")
+@register("enterKey")
+@register("pressReturn")
+def press_enter(args: Dict[str, Any] = None) -> Dict[str, Any]:
+    """Press the Enter/Return key in the active window."""
+    try:
+        import ctypes
+        VK_RETURN = 0x0D
+        KEYEVENTF_KEYUP = 0x0002
+        ctypes.windll.user32.keybd_event(VK_RETURN, 0, 0, 0)
+        time.sleep(0.02)
+        ctypes.windll.user32.keybd_event(VK_RETURN, 0, KEYEVENTF_KEYUP, 0)
+    except Exception:
+        pass
+
+    try:
+        ag = _get_pyautogui()
+        ag.press("enter")
+    except Exception:
+        pass
+
+    return {"result": "Pressed Enter key."}
+
+
 @register("keyboardPress")
 @register("keyboard.press")
-def keyboard_press(args: Dict[str, Any]) -> Dict[str, Any]:
+@register("pressKey")
+def keyboard_press(args: Dict[str, Any] = None) -> Dict[str, Any]:
+    args = args or {}
     key = args.get("key") or args.get("value") or args.get("target") or "enter"
     norm = _normalize_key(str(key))
+    if norm == "enter":
+        return press_enter(args)
+
     ag = _get_pyautogui()
     ag.press(norm)
     return {"result": f"Pressed key: {norm.upper()}."}
@@ -117,3 +146,68 @@ def keyboard_hotkey(args: Dict[str, Any]) -> Dict[str, Any]:
     ag.hotkey(*normalized)
     combo_str = "+".join(k.upper() for k in normalized)
     return {"result": f"Executed hotkey combination: {combo_str}.", "combo": combo_str}
+
+
+# --- Browser Tab & Navigation Keystroke Automations ---
+
+
+@register("previousTab")
+@register("prevTab")
+@register("switchToPreviousTab")
+def previous_tab(args: Dict[str, Any] = None) -> Dict[str, Any]:
+    """Switch to the previous tab in the active browser (Ctrl+Shift+Tab / Ctrl+PageUp)."""
+    ag = _get_pyautogui()
+    try:
+        ag.hotkey("ctrl", "shift", "tab")
+    except Exception:
+        ag.hotkey("ctrl", "pageup")
+    return {"result": "Switched to previous browser tab (Ctrl+Shift+Tab)."}
+
+
+@register("nextTab")
+@register("switchToNextTab")
+def next_tab(args: Dict[str, Any] = None) -> Dict[str, Any]:
+    """Switch to the next tab in the active browser (Ctrl+Tab / Ctrl+PageDown)."""
+    ag = _get_pyautogui()
+    try:
+        ag.hotkey("ctrl", "tab")
+    except Exception:
+        ag.hotkey("ctrl", "pagedown")
+    return {"result": "Switched to next browser tab (Ctrl+Tab)."}
+
+
+@register("browserBack")
+@register("browserGoBack")
+def browser_go_back(args: Dict[str, Any] = None) -> Dict[str, Any]:
+    """Go back in browser history (Alt+Left)."""
+    ag = _get_pyautogui()
+    ag.hotkey("alt", "left")
+    return {"result": "Navigated back in browser history (Alt+Left)."}
+
+
+@register("browserForward")
+@register("browserGoForward")
+def browser_go_forward(args: Dict[str, Any] = None) -> Dict[str, Any]:
+    """Go forward in browser history (Alt+Right)."""
+    ag = _get_pyautogui()
+    ag.hotkey("alt", "right")
+    return {"result": "Navigated forward in browser history (Alt+Right)."}
+
+
+@register("newTab")
+@register("browserNewTab")
+def browser_new_tab(args: Dict[str, Any] = None) -> Dict[str, Any]:
+    """Open a new browser tab (Ctrl+T)."""
+    ag = _get_pyautogui()
+    ag.hotkey("ctrl", "t")
+    return {"result": "Opened new browser tab (Ctrl+T)."}
+
+
+@register("closeTab")
+@register("browserCloseTab")
+def browser_close_tab(args: Dict[str, Any] = None) -> Dict[str, Any]:
+    """Close the active browser tab (Ctrl+W)."""
+    ag = _get_pyautogui()
+    ag.hotkey("ctrl", "w")
+    return {"result": "Closed active browser tab (Ctrl+W)."}
+

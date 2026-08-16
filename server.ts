@@ -97,9 +97,14 @@ const DESKTOP_TOOLS: ReadonlySet<string> = new Set([
   "changeSong", "playSong", "pauseSong", "resumeSong",
   "requestPowerAction", "executePowerAction",
   // windows
-  "minimizeWindow", "maximizeWindow", "closeWindow", "switchApplication",
+  "minimizeWindow", "maximizeWindow", "restoreWindow", "focusWindow", "closeWindow", "switchApplication", "resizeWindow", "moveWindow",
   // typing and keyboard
   "typeText", "pasteClipboard", "copySelected", "getClipboard", "clearClipboard",
+  "keyboardPress", "keyboardType", "keyboardHotkey", "pressEnter", "pressKey",
+  // browser tabs and navigation
+  "previousTab", "nextTab", "browserBack", "browserForward", "newTab", "closeTab",
+  // mouse control
+  "mouseMove", "mouseClick", "mouseDoubleClick", "mouseRightClick", "mouseDrag", "mouseScroll",
   // screenshot / screen reading
   "takeScreenshot", "saveScreenshot", "analyzeScreenshot", "readScreen",
   // browser automation (Playwright — desktop-owned, separate from holographic UI)
@@ -1883,8 +1888,14 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
         "   - When the user asks 'What is on my screen?', 'What website am I on?', 'Do you see any errors?', 'Explain this code', 'Summarize this page', 'Read the visible text', 'How is this thumbnail?', or 'Analyze my YouTube analytics', immediately examine the latest incoming visual frame to diagnose issues, and answer with expert, friendly empathy like a close caller. Speak with direct, confident visual description reference!\n" +
         "10. JARVIS-STYLE DESKTOP CONTROL POWERS (Native Windows & Desktop Control):\n" +
         "   - You have full real-time control of MANISH's Windows PC. When the user asks you to perform an action on their computer, DO IT immediately and naturally — like a true JARVIS-class companion.\n" +
-        "   - APPLICATION CONTROL: Use 'openApplication' to launch Notion, Spotify, Discord, VS Code, Chrome, Brave, Notepad, Calculator, WhatsApp, File Explorer, Telegram, Word, Excel, Terminal, and more. Use 'closeApplication' to close them. Example: 'Open Notion' -> call openApplication(name='Notion') -> respond 'Opening Notion for you now.'\n" +
-        "   - TYPING & WRITING INTO APPS: Use 'typeText' or 'pasteClipboard' to type or write text into the active application window! Example: If MANISH says 'Open Notion and write a todo list' -> first call openApplication(name='Notion'), then call typeText(text='- Task 1\\n- Task 2') -> respond naturally: 'Notion is open and I\\'ve written your todo list!'\n" +
+        "   - KEYBOARD & TYPING:\n" +
+        "     * When MANISH asks to press Enter (e.g. 'press enter', 'hit enter', 'click enter', 'press return'): CALL 'pressEnter()' immediately! Respond warmly: 'Pressed Enter for you.'\n" +
+        "     * When MANISH asks to press a key (e.g. 'press escape', 'press tab', 'press space', 'press backspace'): CALL 'pressKey(key=\"...\")'.\n" +
+        "     * Use 'typeText' or 'pasteClipboard' to type or write text into the active application window! Example: If MANISH says 'Open Notion and write a todo list' -> first call openApplication(name='Notion'), then call typeText(text='- Task 1\\n- Task 2') -> respond naturally: 'Notion is open and I\\'ve written your todo list!'\n" +
+        "   - BROWSER TABS & NAVIGATION:\n" +
+        "     * When MANISH asks to go back to previous tab or next tab (e.g. 'go back to previous tab', 'previous tab', 'switch tab', 'next tab'): CALL 'previousTab()' or 'nextTab()' immediately! Respond warmly: 'Switched to the previous tab for you.'\n" +
+        "     * When MANISH asks to go back in browser history (e.g. 'go back in browser', 'browser back', 'previous page'): CALL 'browserBack()'.\n" +
+        "     * When MANISH asks to open a new tab or close tab (e.g. 'open new tab', 'close this tab'): CALL 'newTab()' or 'closeTab()'.\n" +
         "   - WEBSITE & SEARCH CONTROL: Use 'openWebsite' for named sites (youtube, gmail, google, github, chatgpt) or any URL. Use 'searchWeb', 'searchYouTube', 'searchGoogle', 'searchGitHub' to open search results in the default browser. Example: 'Search YouTube for AI News' -> searchYouTube(query='AI News').\n" +
         "   - FILE EXPLORER & MANAGEMENT: Use 'openFolder' to open File Explorer (e.g. openFolder(name='downloads')), 'searchFiles' to find files, 'getFileProperties' to inspect a file's size, created/modified date and type, 'copyFile' to copy files, 'moveFile' to move files, 'renameFile' to rename, 'deleteFile' to delete, and 'createFile' to create new files.\n" +
         "   - FILE PROPERTIES & INSPECTION: When MANISH asks 'What is the size of my resume?' or 'Tell me about notes.txt', call getFileProperties(path='Desktop/notes.txt') and read back its formatted size and modified date naturally.\n" +
@@ -2366,6 +2377,52 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
                 {
                   name: "mediaStop",
                   description: "Stop media playback on the PC.",
+                  parameters: { type: Type.OBJECT, properties: {} }
+                },
+                {
+                  name: "pressEnter",
+                  description: "Press the Enter / Return key in the currently active window or browser input.",
+                  parameters: { type: Type.OBJECT, properties: {} }
+                },
+                {
+                  name: "pressKey",
+                  description: "Press a specific key on the keyboard (e.g. 'enter', 'esc', 'tab', 'space', 'backspace', 'up', 'down', 'left', 'right', 'home', 'end', 'pageup', 'pagedown', 'f1'-'f12').",
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      key: { type: Type.STRING, description: "The key name to press." }
+                    },
+                    required: ["key"]
+                  }
+                },
+                {
+                  name: "previousTab",
+                  description: "Switch to the previous tab in the active web browser (Ctrl+Shift+Tab / Ctrl+PageUp).",
+                  parameters: { type: Type.OBJECT, properties: {} }
+                },
+                {
+                  name: "nextTab",
+                  description: "Switch to the next tab in the active web browser (Ctrl+Tab / Ctrl+PageDown).",
+                  parameters: { type: Type.OBJECT, properties: {} }
+                },
+                {
+                  name: "browserBack",
+                  description: "Go back to the previous page in browser history (Alt+Left).",
+                  parameters: { type: Type.OBJECT, properties: {} }
+                },
+                {
+                  name: "browserForward",
+                  description: "Go forward to the next page in browser history (Alt+Right).",
+                  parameters: { type: Type.OBJECT, properties: {} }
+                },
+                {
+                  name: "newTab",
+                  description: "Open a new browser tab (Ctrl+T).",
+                  parameters: { type: Type.OBJECT, properties: {} }
+                },
+                {
+                  name: "closeTab",
+                  description: "Close the currently active browser tab (Ctrl+W).",
                   parameters: { type: Type.OBJECT, properties: {} }
                 },
                 {

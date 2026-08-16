@@ -169,6 +169,15 @@ DESKTOP_TOOL_NAMES = [
     "keyboardType",
     "keyboardPress",
     "keyboardHotkey",
+    "pressEnter",
+    "pressKey",
+    # tab & browser navigation
+    "previousTab",
+    "nextTab",
+    "browserBack",
+    "browserForward",
+    "newTab",
+    "closeTab",
 ]
 
 
