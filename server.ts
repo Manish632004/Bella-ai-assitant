@@ -24,6 +24,7 @@ import {
   setGeminiApiKey,
 } from "./server_paths";
 import { getProactiveEngine } from "./proactive/ProactiveEngine";
+import { computerActionEngine, AppRegistry } from "./computer";
 
 dotenv.config();
 
@@ -1124,6 +1125,43 @@ async function startServer() {
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
+  });
+
+  // ===========================================================================
+  // COMPUTER ACTION ENGINE — REST API Endpoints
+  // ===========================================================================
+  app.post("/api/computer/execute", async (req, res) => {
+    try {
+      const action = req.body;
+      if (!action || typeof action !== "object") {
+        return res.status(400).json({ error: "Missing or invalid action object." });
+      }
+      const result = await computerActionEngine.execute(action);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.post("/api/computer/batch", async (req, res) => {
+    try {
+      const { actions, stopOnError } = req.body || {};
+      if (!Array.isArray(actions)) {
+        return res.status(400).json({ error: "Expected 'actions' to be an array of ComputerActions." });
+      }
+      const results = await computerActionEngine.executeBatch(actions, { stopOnError: stopOnError ?? true });
+      res.json({ success: results.every(r => r.success), results });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.get("/api/computer/apps", (_req, res) => {
+    res.json({ applications: AppRegistry.getAll() });
+  });
+
+  app.get("/api/computer/status", async (_req, res) => {
+    res.json({ status: "ready", engine: "ComputerActionEngine", version: "1.0.0" });
   });
 
   // Safe Server-Side Scraper & HTML Proxy endpoint
@@ -2331,6 +2369,39 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
                   parameters: { type: Type.OBJECT, properties: {} }
                 },
                 {
+                  name: "executeComputerAction",
+                  description: "Execute a structured computer action (mouse, keyboard, window, or semantic browser automation).",
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      type: {
+                        type: Type.STRING,
+                        description: "Action type: mouse.move, mouse.click, mouse.doubleClick, mouse.rightClick, mouse.drag, mouse.scroll, keyboard.type, keyboard.press, keyboard.hotkey, app.open, app.close, window.minimize, window.maximize, window.restore, window.focus, window.switch, browser.navigate, browser.click, browser.type, browser.select, browser.submit, browser.wait, browser.inspect, browser.read, browser.screenshot."
+                      },
+                      target: { type: Type.STRING, description: "Target selector, application name, key, or URL." },
+                      value: { type: Type.STRING, description: "Text value, key name, or dropdown option value." },
+                      x: { type: Type.NUMBER, description: "Optional X coordinate for mouse actions." },
+                      y: { type: Type.NUMBER, description: "Optional Y coordinate for mouse actions." }
+                    },
+                    required: ["type"]
+                  }
+                },
+                {
+                  name: "batchComputerActions",
+                  description: "Execute a sequence of computer actions sequentially with error handling.",
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      actions: {
+                        type: Type.ARRAY,
+                        items: { type: Type.OBJECT },
+                        description: "Array of ComputerAction objects to execute in sequence."
+                      }
+                    },
+                    required: ["actions"]
+                  }
+                },
+                {
                   name: "requestPowerAction",
                   description: "FIRST STEP for dangerous power actions. Generates a confirmation token. Tell the user verbally, then call executePowerAction with the token if they confirm. Actions: shutdown, restart, sleep, lock.",
                   parameters: { type: Type.OBJECT, properties: { action: { type: Type.STRING, description: "Power action: shutdown, restart, sleep, lock." } }, required: ["action"] }
@@ -2668,6 +2739,66 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
                       });
                     } catch (err: any) {
                       console.error("stopScreenShare error:", err);
+                    }
+                  })();
+                } else if (fc.name === "executeComputerAction") {
+                  (async () => {
+                    try {
+                      const args = (fc.args || {}) as any;
+                      const actionObj = {
+                        type: args.type,
+                        target: args.target,
+                        value: args.value,
+                        coordinates: (args.x !== undefined && args.y !== undefined) ? { x: args.x, y: args.y } : undefined,
+                        parameters: args.parameters || (args.keys ? { keys: args.keys } : {})
+                      };
+                      const actionResult = await computerActionEngine.execute(actionObj);
+                      session.sendToolResponse({
+                        functionResponses: [
+                          {
+                            name: fc.name,
+                            response: { output: actionResult },
+                            id: fc.id
+                          }
+                        ]
+                      });
+                    } catch (err: any) {
+                      session.sendToolResponse({
+                        functionResponses: [
+                          {
+                            name: fc.name,
+                            response: { output: { success: false, error: err.message } },
+                            id: fc.id
+                          }
+                        ]
+                      });
+                    }
+                  })();
+                } else if (fc.name === "batchComputerActions") {
+                  (async () => {
+                    try {
+                      const args = (fc.args || {}) as any;
+                      const actionsList = Array.isArray(args.actions) ? args.actions : [];
+                      const batchResults = await computerActionEngine.executeBatch(actionsList);
+                      session.sendToolResponse({
+                        functionResponses: [
+                          {
+                            name: fc.name,
+                            response: { output: { success: batchResults.every(r => r.success), results: batchResults } },
+                            id: fc.id
+                          }
+                        ]
+                      });
+                    } catch (err: any) {
+                      session.sendToolResponse({
+                        functionResponses: [
+                          {
+                            name: fc.name,
+                            response: { output: { success: false, error: err.message } },
+                            id: fc.id
+                          }
+                        ]
+                      });
                     }
                   })();
                 } else if (fc.name.startsWith("dashboard")) {

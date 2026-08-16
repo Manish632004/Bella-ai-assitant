@@ -179,9 +179,55 @@ def switch_application(args: Dict[str, Any]) -> Dict[str, Any]:
         raise ToolError("Could not switch applications.")
 
 
+@register("restoreWindow")
+def restore_window(args: Dict[str, Any]) -> Dict[str, Any]:
+    hwnd, title = _resolve_target(args)
+    _show_window(hwnd, SW_RESTORE)
+    return {"result": f"Restored window: {title or 'active window'}."}
+
+
+@register("focusWindow")
+def focus_window(args: Dict[str, Any]) -> Dict[str, Any]:
+    return switch_application(args)
+
+
+@register("resizeWindow")
+def resize_window(args: Dict[str, Any]) -> Dict[str, Any]:
+    hwnd, title = _resolve_target(args)
+    width = int(args.get("width", 1280))
+    height = int(args.get("height", 800))
+    try:
+        import win32gui
+        rect = win32gui.GetWindowRect(hwnd)
+        x, y = rect[0], rect[1]
+        win32gui.MoveWindow(hwnd, x, y, width, height, True)
+        return {"result": f"Resized window '{title}' to {width}x{height}."}
+    except Exception as e:
+        raise ToolError(f"Could not resize window: {e}")
+
+
+@register("moveWindow")
+def move_window(args: Dict[str, Any]) -> Dict[str, Any]:
+    hwnd, title = _resolve_target(args)
+    x = int(args.get("x", 0))
+    y = int(args.get("y", 0))
+    try:
+        import win32gui
+        rect = win32gui.GetWindowRect(hwnd)
+        w, h = rect[2] - rect[0], rect[3] - rect[1]
+        win32gui.MoveWindow(hwnd, x, y, w, h, True)
+        return {"result": f"Moved window '{title}' to ({x}, {y})."}
+    except Exception as e:
+        raise ToolError(f"Could not move window: {e}")
+
+
 __all__ = [
     "minimize_window",
     "maximize_window",
+    "restore_window",
+    "focus_window",
     "close_window",
     "switch_application",
+    "resize_window",
+    "move_window",
 ]

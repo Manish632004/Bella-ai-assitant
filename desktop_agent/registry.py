@@ -113,8 +113,12 @@ DESKTOP_TOOL_NAMES = [
     # windows
     "minimizeWindow",
     "maximizeWindow",
+    "restoreWindow",
+    "focusWindow",
     "closeWindow",
     "switchApplication",
+    "resizeWindow",
+    "moveWindow",
     # clipboard
     "copySelected",
     "pasteClipboard",
@@ -154,6 +158,17 @@ DESKTOP_TOOL_NAMES = [
     "enableAutoStart",
     "disableAutoStart",
     "getAutoStartStatus",
+    # mouse control
+    "mouseMove",
+    "mouseClick",
+    "mouseDoubleClick",
+    "mouseRightClick",
+    "mouseDrag",
+    "mouseScroll",
+    # keyboard control
+    "keyboardType",
+    "keyboardPress",
+    "keyboardHotkey",
 ]
 
 
@@ -170,6 +185,8 @@ _MODULE_NAMES = [
     "tools_pc",
     "tools_windows",
     "tools_clipboard",
+    "tools_mouse",
+    "tools_keyboard",
     "tools_screenshot",
     "tools_browser",
     "tools_coding",
