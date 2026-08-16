@@ -119,10 +119,26 @@
       "type": "task_suggestion",
       "action": "snoozed",
       "timestamp": "2026-08-16T16:59:34.348Z"
+    },
+    {
+      "id": "zbizmvwcj",
+      "suggestionId": "sug-task-due-task-1",
+      "category": "tasks",
+      "type": "task_suggestion",
+      "action": "dismissed",
+      "timestamp": "2026-08-16T17:12:30.049Z"
+    },
+    {
+      "id": "8y1jewz0b",
+      "suggestionId": "sug-task-due-task-1",
+      "category": "tasks",
+      "type": "task_suggestion",
+      "action": "dismissed",
+      "timestamp": "2026-08-16T17:13:18.551Z"
     }
   ],
   "weights": {
-    "tasks": 0.7499999999999999,
+    "tasks": 0.44999999999999984,
     "projects": 0.7499999999999999,
     "learning": 0.5999999999999999,
     "calendar": 1,
@@ -135,7 +151,7 @@
     "camera": 0.8
   },
   "dismissals": {
-    "tasks": 3,
+    "tasks": 5,
     "learning": 4,
     "projects": 3
   }

@@ -2365,16 +2365,6 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
                   parameters: { type: Type.OBJECT, properties: {} }
                 },
                 {
-                  name: "changeSong",
-                  description: "Change the currently playing song or play a requested song on YouTube / Spotify in the default browser. Accepts an optional song or query parameter.",
-                  parameters: {
-                    type: Type.OBJECT,
-                    properties: {
-                      query: { type: Type.STRING, description: "The song title or search query (e.g. 'Barbaad song', 'Levitating Dua Lipa')." }
-                    }
-                  }
-                },
-                {
                   name: "mediaNextTrack",
                   description: "Skip to the next song, video, or track in YouTube, Spotify, or the active browser media player.",
                   parameters: { type: Type.OBJECT, properties: {} }
