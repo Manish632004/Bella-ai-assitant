@@ -383,6 +383,16 @@ function launchAppNative(appName: string): Promise<{ ok: boolean; result?: unkno
 
     const psScript = `
 $appName = '${raw.replace(/'/g, "''")}';
+$wshell = New-Object -ComObject WScript.Shell;
+
+try {
+  $activated = $wshell.AppActivate($appName);
+  if ($activated) {
+    Write-Output "ACTIVATED_EXISTING";
+    exit 0;
+  }
+} catch {}
+
 $knownExe = @{
   "notion" = "$env:LOCALAPPDATA\\Programs\\Notion\\Notion.exe";
   "spotify" = "$env:APPDATA\\Spotify\\Spotify.exe";
@@ -816,15 +826,37 @@ const DIRECT_NATIVE_TOOLS = new Set([
   "searchYouTube", "openWebsite", "openUrl", "searchGoogle", "searchWeb", "searchGitHub", "openFolder"
 ]);
 
+const recentToolCalls = new Map<string, { time: number; result: { ok: boolean; result?: unknown; error?: string } }>();
+
 async function callDesktopAgent(
   tool: string,
   args: Record<string, unknown>,
 ): Promise<{ ok: boolean; result?: unknown; error?: string }> {
+  // Prevent duplicate execution if the exact same tool call was triggered within 1500ms
+  const callKey = `${tool}:${JSON.stringify(args || {})}`;
+  const now = Date.now();
+  const recent = recentToolCalls.get(callKey);
+  if (recent && now - recent.time < 1500) {
+    console.log(`[Desktop Agent] Debounced duplicate tool execution: ${tool}`);
+    return recent.result;
+  }
+
+  const recordResult = (res: { ok: boolean; result?: unknown; error?: string }) => {
+    recentToolCalls.set(callKey, { time: Date.now(), result: res });
+    if (recentToolCalls.size > 50) {
+      const cutoff = Date.now() - 10000;
+      for (const [k, v] of recentToolCalls.entries()) {
+        if (v.time < cutoff) recentToolCalls.delete(k);
+      }
+    }
+    return res;
+  };
+
   // Always execute high-priority native Windows operations first (apps, files, typing, search, folders)
   if (DIRECT_NATIVE_TOOLS.has(tool)) {
     const nativeDirect = await executeNativeFallback(tool, args);
     if (nativeDirect && nativeDirect.ok) {
-      return nativeDirect;
+      return recordResult(nativeDirect);
     }
   }
 
@@ -848,26 +880,26 @@ async function callDesktopAgent(
 
     if (!res.ok) {
       const fallback = await executeNativeFallback(tool, args);
-      if (fallback) return fallback;
+      if (fallback) return recordResult(fallback);
       const text = await res.text().catch(() => "");
       logError(`AGENT_HTTP_${res.status} ${tool}: ${text.substring(0,200)}`);
-      return { ok: false, error: `Desktop agent HTTP ${res.status}: ${text}` };
+      return recordResult({ ok: false, error: `Desktop agent HTTP ${res.status}: ${text}` });
     }
     const data: any = await res.json();
     if (!data || data.ok === false || data.error) {
       const fallback = await executeNativeFallback(tool, args);
-      if (fallback && fallback.ok) return fallback;
+      if (fallback && fallback.ok) return recordResult(fallback);
     }
-    return data;
+    return recordResult(data);
   } catch (err: any) {
     desktopAgentVerified = false; // mark stale so next call retries the spawn
     const fallback = await executeNativeFallback(tool, args);
-    if (fallback) return fallback;
+    if (fallback) return recordResult(fallback);
     const msg = err?.name === "AbortError"
       ? "Desktop agent timed out."
       : "Desktop agent is not running.";
     logError(`AGENT_UNREACHABLE ${tool}: ${msg}`);
-    return { ok: false, error: msg };
+    return recordResult({ ok: false, error: msg });
   }
 }
 
