@@ -19,12 +19,22 @@ import {
   Briefcase,
   Users,
   Flame,
+  Compass,
+  Shield,
+  BookOpen,
+  FolderKanban,
+  CheckSquare,
+  Calendar,
+  RotateCcw,
+  Clock,
+  Eye,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   BellaSettings,
 } from "../lib/settingsStore";
 import { Memory, MemoryCategory } from "../lib/memoryTypes";
+import { ProactiveSettings, ProactiveLevel, ProactiveCategory } from "../../proactive/types";
 
 interface SettingsPanelProps {
   isOpen: boolean;
@@ -40,9 +50,15 @@ interface SettingsPanelProps {
   onAddMemory?: (category: MemoryCategory, text: string) => Promise<void>;
   /** Handler to delete a recollection */
   onDeleteMemory?: (id: string) => Promise<void>;
+  /** Proactive Intelligence settings */
+  proactiveSettings?: ProactiveSettings;
+  /** Handler to update proactive settings */
+  onUpdateProactiveSettings?: (patch: Partial<ProactiveSettings>) => void;
+  /** Handler to reset proactive feedback memory */
+  onResetProactiveFeedback?: () => void;
 }
 
-type SettingsTab = "general" | "recalls" | "voice" | "system" | "about";
+type SettingsTab = "general" | "proactive" | "recalls" | "voice" | "system" | "about";
 
 /** A single toggle row matching the existing switch style. */
 function ToggleRow({
@@ -215,6 +231,7 @@ export function SettingsPanel({
 
   const tabs: { id: SettingsTab; label: string; icon: any }[] = [
     { id: "general", label: "GENERAL", icon: Power },
+    { id: "proactive", label: "PROACTIVE AI", icon: Compass },
     { id: "recalls", label: "RECALLS", icon: Brain },
     { id: "voice", label: "VOICE", icon: Mic },
     { id: "system", label: "SYSTEM", icon: Cpu },
@@ -349,6 +366,188 @@ export function SettingsPanel({
                         Auto-start configured in Windows registry (HKCU\...\Run).
                       </span>
                     </div>
+                  )}
+                </div>
+              )}
+
+              {/* ---------------- PROACTIVE INTELLIGENCE ---------------- */}
+              {activeTab === "proactive" && proactiveSettings && onUpdateProactiveSettings && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-[10px] font-mono uppercase tracking-widest text-slate-500">
+                        Proactive Intelligence Engine
+                      </div>
+                      <div className="text-[11px] font-mono text-slate-400 mt-0.5">
+                        Context-aware anticipation &amp; timely assistance
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-cyan-500/30 bg-cyan-500/10 text-cyan-300 text-[10px] font-mono font-bold uppercase tracking-wider">
+                      <Sparkles size={12} />
+                      <span>{proactiveSettings.enabled ? proactiveSettings.level : "OFF"}</span>
+                    </div>
+                  </div>
+
+                  {/* Master Toggle */}
+                  <ToggleRow
+                    label="PROACTIVE ASSISTANCE"
+                    description="Allow Bella to proactively notice tasks, deadlines, and learning opportunities"
+                    checked={proactiveSettings.enabled}
+                    onChange={(v) => onUpdateProactiveSettings({ enabled: v })}
+                  />
+
+                  {proactiveSettings.enabled && (
+                    <>
+                      {/* Proactivity Level Selector */}
+                      <div className="space-y-2 pt-2 border-t border-white/5">
+                        <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-300">
+                          Proactivity Level
+                        </label>
+                        <div className="grid grid-cols-4 gap-2">
+                          {(["OFF", "LOW", "MEDIUM", "HIGH"] as ProactiveLevel[]).map((lvl) => (
+                            <button
+                              key={lvl}
+                              type="button"
+                              onClick={() => onUpdateProactiveSettings({ level: lvl })}
+                              className={`py-2 px-2 rounded-xl border text-[10px] font-mono font-semibold tracking-wider transition-all cursor-pointer ${
+                                proactiveSettings.level === lvl
+                                  ? "border-cyan-400 bg-cyan-500/20 text-cyan-200 shadow-[0_0_12px_rgba(6,182,212,0.25)]"
+                                  : "border-white/5 bg-white/5 text-slate-400 hover:bg-white/10"
+                              }`}
+                            >
+                              {lvl}
+                            </button>
+                          ))}
+                        </div>
+                        <p className="text-[9px] font-mono text-slate-400 leading-normal">
+                          {proactiveSettings.level === "OFF" && "No proactive behavior. Bella will only respond to direct commands."}
+                          {proactiveSettings.level === "LOW" && "High-priority only: urgent deadlines, critical blockers, and important reminders."}
+                          {proactiveSettings.level === "MEDIUM" && "Standard companion: tracks tasks, project check-ins, and spaced learning reviews."}
+                          {proactiveSettings.level === "HIGH" && "Full context: offers workflow recommendations, knowledge connections, and daily briefings."}
+                        </p>
+                      </div>
+
+                      {/* Category Permissions Matrix (Default-Deny Privacy) */}
+                      <div className="space-y-2 pt-2 border-t border-white/5">
+                        <div className="flex items-center justify-between">
+                          <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-300">
+                            Context Categories &amp; Privacy (Default Deny)
+                          </label>
+                          <span className="text-[8px] font-mono text-slate-500 uppercase">
+                            Privacy Boundaries
+                          </span>
+                        </div>
+
+                        <div className="space-y-1">
+                          <ToggleRow
+                            label="TASKS &amp; DEADLINES"
+                            description="Monitor pending tasks, approaching due dates, and priority blockers"
+                            checked={proactiveSettings.permissions.tasks}
+                            onChange={(v) => onUpdateProactiveSettings({ permissions: { ...proactiveSettings.permissions, tasks: v } })}
+                          />
+                          <ToggleRow
+                            label="PROJECTS"
+                            description="Track project milestones and inactivity check-ins"
+                            checked={proactiveSettings.permissions.projects}
+                            onChange={(v) => onUpdateProactiveSettings({ permissions: { ...proactiveSettings.permissions, projects: v } })}
+                          />
+                          <ToggleRow
+                            label="SPACED LEARNING"
+                            description="Proactively suggest topic revisions based on retention decay"
+                            checked={proactiveSettings.permissions.learning}
+                            onChange={(v) => onUpdateProactiveSettings({ permissions: { ...proactiveSettings.permissions, learning: v } })}
+                          />
+                          <ToggleRow
+                            label="CYBERSECURITY ADVICE"
+                            description="Suggest next learning paths, lab prerequisites, and certifications"
+                            checked={proactiveSettings.permissions.cybersecurity}
+                            onChange={(v) => onUpdateProactiveSettings({ permissions: { ...proactiveSettings.permissions, cybersecurity: v } })}
+                          />
+                          <ToggleRow
+                            label="CALENDAR &amp; PLANNING"
+                            description="Morning focus briefing and available work slot suggestions"
+                            checked={proactiveSettings.permissions.calendar}
+                            onChange={(v) => onUpdateProactiveSettings({ permissions: { ...proactiveSettings.permissions, calendar: v } })}
+                          />
+                          <ToggleRow
+                            label="LOCAL FILES &amp; DOWNLOADS"
+                            description="Notice downloaded study materials (Off by default for privacy)"
+                            checked={proactiveSettings.permissions.files}
+                            onChange={(v) => onUpdateProactiveSettings({ permissions: { ...proactiveSettings.permissions, files: v } })}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Quiet Hours & Anti-Distraction */}
+                      <div className="space-y-2 pt-2 border-t border-white/5">
+                        <div className="flex items-center justify-between">
+                          <label className="block text-[10px] font-mono uppercase tracking-wider text-slate-300">
+                            Quiet Hours &amp; Cooldown
+                          </label>
+                          <span className="text-[8px] font-mono text-slate-500 uppercase">
+                            Anti-Annoyance
+                          </span>
+                        </div>
+
+                        <ToggleRow
+                          label="ENABLE QUIET HOURS"
+                          description="Mute non-critical proactive suggestions during focus or sleep hours"
+                          checked={proactiveSettings.quietHours.enabled}
+                          onChange={(v) => onUpdateProactiveSettings({ quietHours: { ...proactiveSettings.quietHours, enabled: v } })}
+                        />
+
+                        {proactiveSettings.quietHours.enabled && (
+                          <div className="grid grid-cols-2 gap-3 pt-1">
+                            <div className="space-y-1">
+                              <span className="text-[9px] font-mono text-slate-400">Start Time</span>
+                              <input
+                                type="time"
+                                value={proactiveSettings.quietHours.start}
+                                onChange={(e) => onUpdateProactiveSettings({ quietHours: { ...proactiveSettings.quietHours, start: e.target.value } })}
+                                className="w-full bg-slate-900/90 border border-white/10 rounded-xl px-3 py-1.5 text-xs font-mono text-white focus:outline-none focus:border-cyan-400"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <span className="text-[9px] font-mono text-slate-400">End Time</span>
+                              <input
+                                type="time"
+                                value={proactiveSettings.quietHours.end}
+                                onChange={(e) => onUpdateProactiveSettings({ quietHours: { ...proactiveSettings.quietHours, end: e.target.value } })}
+                                className="w-full bg-slate-900/90 border border-white/10 rounded-xl px-3 py-1.5 text-xs font-mono text-white focus:outline-none focus:border-cyan-400"
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        <ToggleRow
+                          label="MORNING BRIEFING"
+                          description="Show a gentle daily priority overview during morning planning"
+                          checked={proactiveSettings.dailyBriefingEnabled}
+                          onChange={(v) => onUpdateProactiveSettings({ dailyBriefingEnabled: v })}
+                        />
+                      </div>
+
+                      {/* Reset Feedback Memory */}
+                      {onResetProactiveFeedback && (
+                        <div className="pt-2 border-t border-white/5 flex items-center justify-between">
+                          <div>
+                            <span className="text-[11px] font-bold font-mono text-slate-300">Reset Preference Learning</span>
+                            <span className="block text-[9px] text-slate-500 font-mono">
+                              Clear dismissal penalties and restore default suggestion weights
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={onResetProactiveFeedback}
+                            className="px-3 py-1.5 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white text-xs font-mono transition flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <RotateCcw size={12} />
+                            <span>Reset</span>
+                          </button>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               )}

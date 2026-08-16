@@ -1,0 +1,68 @@
+{
+  "tasks": [
+    {
+      "id": "task-1",
+      "title": "Finish authentication module & permission handler",
+      "category": "Bella AI Assistant",
+      "priority": "high",
+      "status": "pending",
+      "dueDate": "2026-08-17T07:26:37.689Z",
+      "createdAt": "2026-08-13T07:26:37.689Z"
+    },
+    {
+      "id": "task-2",
+      "title": "Review SQL Injection & Web Security fundamentals",
+      "category": "Cybersecurity",
+      "priority": "medium",
+      "status": "pending",
+      "createdAt": "2026-08-11T07:26:37.689Z"
+    }
+  ],
+  "projects": [
+    {
+      "id": "proj-1",
+      "name": "Bella AI Assistant",
+      "description": "Personal proactive desktop companion with multimodal voice vision",
+      "status": "active",
+      "lastActiveAt": "2026-08-12T07:26:37.689Z",
+      "tasksCount": 5,
+      "openTasksCount": 2
+    },
+    {
+      "id": "proj-2",
+      "name": "Cybersecurity SOC Portfolio",
+      "description": "Hands-on SOC analysis, TryHackMe labs, and Active Directory security",
+      "status": "active",
+      "lastActiveAt": "2026-08-14T07:26:37.689Z",
+      "tasksCount": 4,
+      "openTasksCount": 3
+    }
+  ],
+  "learningTopics": [
+    {
+      "id": "learn-1",
+      "topic": "SQL Injection",
+      "domain": "cybersecurity",
+      "lastReviewedAt": "2026-08-02T07:26:37.689Z",
+      "retentionScore": 0.65,
+      "reviewCount": 2
+    },
+    {
+      "id": "learn-2",
+      "topic": "Active Directory Enumeration & Kerberos",
+      "domain": "cybersecurity",
+      "lastReviewedAt": "2026-08-09T07:26:37.689Z",
+      "retentionScore": 0.8,
+      "reviewCount": 3
+    },
+    {
+      "id": "learn-3",
+      "topic": "Cross-Site Scripting (XSS)",
+      "domain": "cybersecurity",
+      "lastReviewedAt": "2026-07-27T07:26:37.689Z",
+      "retentionScore": 0.5,
+      "reviewCount": 1
+    }
+  ],
+  "calendarEvents": []
+}

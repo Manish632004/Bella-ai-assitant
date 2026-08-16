@@ -1,0 +1,45 @@
+{
+  "history": [
+    {
+      "id": "dnikd0brq",
+      "suggestionId": "sug-task-due-task-1",
+      "category": "tasks",
+      "type": "task_suggestion",
+      "action": "dismissed",
+      "timestamp": "2026-08-16T10:13:30.960Z"
+    },
+    {
+      "id": "26pxofpzw",
+      "suggestionId": "sug-task-priority-task-1",
+      "category": "tasks",
+      "type": "task_suggestion",
+      "action": "dismissed",
+      "timestamp": "2026-08-16T10:15:46.701Z"
+    },
+    {
+      "id": "2x7yp7a2t",
+      "suggestionId": "sug-learning-review-learn-1",
+      "category": "learning",
+      "type": "learning_suggestion",
+      "action": "dismissed",
+      "timestamp": "2026-08-16T10:20:36.305Z"
+    }
+  ],
+  "weights": {
+    "tasks": 0.8999999999999999,
+    "projects": 1,
+    "learning": 0.95,
+    "calendar": 1,
+    "coding": 1,
+    "cybersecurity": 1.1,
+    "files": 0.8,
+    "browser": 0.8,
+    "screen": 0.8,
+    "mic": 0.8,
+    "camera": 0.8
+  },
+  "dismissals": {
+    "tasks": 2,
+    "learning": 1
+  }
+}

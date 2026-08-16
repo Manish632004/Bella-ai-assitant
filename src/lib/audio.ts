@@ -91,6 +91,9 @@ export class BellaAudioSession {
   private isActivated = false;
   private sessionId: string;
 
+  private onProactiveInit?: (settings: any, suggestions: any[]) => void;
+  private onProactiveSuggestion?: (suggestion: any) => void;
+
   constructor(handlers: {
     onStateChange: (state: LiveState) => void;
     onTranscription: (role: "user" | "model", text: string) => void;
@@ -98,6 +101,8 @@ export class BellaAudioSession {
     onError: (error: string) => void;
     onMemorySync?: (memories: any[]) => void;
     onMiniModeChange?: (enabled: boolean) => void;
+    onProactiveInit?: (settings: any, suggestions: any[]) => void;
+    onProactiveSuggestion?: (suggestion: any) => void;
   }) {
     this.sessionId = `bella_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     this.onStateChange = handlers.onStateChange;
@@ -106,6 +111,8 @@ export class BellaAudioSession {
     this.onError = handlers.onError;
     this.onMemorySync = handlers.onMemorySync;
     this.onMiniModeChange = handlers.onMiniModeChange;
+    this.onProactiveInit = handlers.onProactiveInit;
+    this.onProactiveSuggestion = handlers.onProactiveSuggestion;
   }
   private onMiniModeChange?: (enabled: boolean) => void;
 
@@ -128,6 +135,24 @@ export class BellaAudioSession {
   public sendVideoFrame(base64Data: string) {
     if (this.ws && this.ws.readyState === WebSocket.OPEN && this.currentState !== "disconnected") {
       this.ws.send(JSON.stringify({ type: "video", video: base64Data }));
+    }
+  }
+
+  /**
+   * Send proactive suggestion feedback to the server.
+   */
+  public sendProactiveFeedback(suggestionId: string, action: string) {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: "proactive_feedback", suggestionId, action }));
+    }
+  }
+
+  /**
+   * Send proactive settings update to the server.
+   */
+  public sendProactiveUpdateSettings(patch: any) {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: "proactive_update_settings", patch }));
     }
   }
 
@@ -290,6 +315,16 @@ export class BellaAudioSession {
             if (this.onMemorySync) {
               this.onMemorySync(data.memories);
             }
+          }
+
+          // Handle proactive intelligence init
+          if (data.type === "proactive_init" && this.onProactiveInit) {
+            this.onProactiveInit(data.settings, data.suggestions || []);
+          }
+
+          // Handle real-time proactive suggestion
+          if (data.type === "proactive_suggestion" && data.suggestion && this.onProactiveSuggestion) {
+            this.onProactiveSuggestion(data.suggestion);
           }
 
           // Handle Tool Calling

@@ -32,6 +32,8 @@ import { MemoryDashboard } from "./components/MemoryDashboard";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { BellaSettings, DEFAULT_SETTINGS, loadSettings, saveSettings } from "./lib/settingsStore";
 import { BellaWakeWordDetector } from "./lib/wakeWord";
+import { ProactiveSuggestionCard } from "./components/ProactiveSuggestionCard";
+import { ProactiveSettings, ProactiveSuggestion } from "../proactive/types";
 
 export default function App() {
   const [state, setState] = useState<LiveState>("disconnected");
@@ -327,6 +329,11 @@ export default function App() {
   const [memories, setMemories] = useState<Memory[]>([]);
   const [showMemoryDashboard, setShowMemoryDashboard] = useState<boolean>(false);
 
+  // Proactive Intelligence System state
+  const [proactiveSettings, setProactiveSettings] = useState<ProactiveSettings | null>(null);
+  const [proactiveSuggestions, setProactiveSuggestions] = useState<ProactiveSuggestion[]>([]);
+  const [activeSuggestion, setActiveSuggestion] = useState<ProactiveSuggestion | null>(null);
+
   // V2: Settings + wake word state
   const [settings, setSettings] = useState<BellaSettings>(() => loadSettings());
   const [showSettings, setShowSettings] = useState<boolean>(false);
@@ -439,7 +446,7 @@ export default function App() {
 
   const sessionRef = useRef<BellaAudioSession | null>(null);
 
-  // Fetch initial recollections from backend database
+  // Fetch initial recollections and proactive state from backend
   useEffect(() => {
     fetch("/api/memories")
       .then(res => res.json())
@@ -449,7 +456,99 @@ export default function App() {
         }
       })
       .catch(err => console.error("Initial persistent recollections load failure:", err));
+
+    fetch("/api/proactive/settings")
+      .then(res => res.json())
+      .then(data => {
+        if (data && typeof data.enabled === "boolean") {
+          setProactiveSettings(data);
+        }
+      })
+      .catch(() => {});
+
+    fetch("/api/proactive/suggestions")
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data.suggestions) && data.suggestions.length > 0) {
+          setProactiveSuggestions(data.suggestions);
+          setActiveSuggestion(data.suggestions[0]);
+        }
+      })
+      .catch(() => {});
   }, []);
+
+  const handleAcceptSuggestion = (id: string, action?: any) => {
+    if (sessionRef.current) {
+      sessionRef.current.sendProactiveFeedback(id, "accepted");
+    } else {
+      fetch("/api/proactive/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ suggestionId: id, action: "accepted" })
+      }).catch(() => {});
+    }
+
+    if (action && action.actionType === "open_folder") {
+      fetch("/api/execute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tool: "openFolder", args: action.payload || {} })
+      }).catch(() => {});
+    }
+
+    setActiveSuggestion(null);
+    setProactiveSuggestions((prev) => prev.filter((s) => s.id !== id));
+  };
+
+  const handleDismissSuggestion = (id: string) => {
+    if (sessionRef.current) {
+      sessionRef.current.sendProactiveFeedback(id, "dismissed");
+    } else {
+      fetch("/api/proactive/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ suggestionId: id, action: "dismissed" })
+      }).catch(() => {});
+    }
+    setActiveSuggestion(null);
+    setProactiveSuggestions((prev) => prev.filter((s) => s.id !== id));
+  };
+
+  const handleSnoozeSuggestion = (id: string) => {
+    if (sessionRef.current) {
+      sessionRef.current.sendProactiveFeedback(id, "snoozed");
+    } else {
+      fetch("/api/proactive/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ suggestionId: id, action: "snoozed" })
+      }).catch(() => {});
+    }
+    setActiveSuggestion(null);
+    setProactiveSuggestions((prev) => prev.filter((s) => s.id !== id));
+  };
+
+  const handleUpdateProactiveSettings = (patch: Partial<ProactiveSettings>) => {
+    if (!proactiveSettings) return;
+    const next = { ...proactiveSettings, ...patch };
+    setProactiveSettings(next);
+    if (sessionRef.current) {
+      sessionRef.current.sendProactiveUpdateSettings(patch);
+    }
+    fetch("/api/proactive/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch)
+    }).catch(() => {});
+  };
+
+  const handleResetProactiveFeedback = () => {
+    fetch("/api/proactive/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ suggestionId: "all", action: "reset" })
+    }).catch(() => {});
+  };
 
   const handleAddManualMemory = async (category: MemoryCategory, text: string) => {
     try {
@@ -590,6 +689,20 @@ export default function App() {
       onMiniModeChange: (enabled) => {
         console.log("[App] Mini mode transition triggered:", enabled);
         setIsMiniMode(enabled);
+      },
+      onProactiveInit: (pSettings, pSuggestions) => {
+        if (pSettings) setProactiveSettings(pSettings);
+        if (Array.isArray(pSuggestions)) {
+          setProactiveSuggestions(pSuggestions);
+          if (pSuggestions.length > 0) {
+            setActiveSuggestion(pSuggestions[0]);
+          }
+        }
+      },
+      onProactiveSuggestion: (suggestion) => {
+        console.log("[App] New proactive suggestion received:", suggestion);
+        setProactiveSuggestions((prev) => [suggestion, ...prev.filter((s) => s.id !== suggestion.id)]);
+        setActiveSuggestion(suggestion);
       }
     });
 
@@ -1178,6 +1291,18 @@ export default function App() {
         )}
       </AnimatePresence>
 
+      {/* Floating Proactive Intelligence Suggestion Card */}
+      {!isMiniMode && activeSuggestion && (
+        <div className="fixed top-20 right-6 z-50 max-w-sm pointer-events-auto">
+          <ProactiveSuggestionCard
+            suggestion={activeSuggestion}
+            onAccept={handleAcceptSuggestion}
+            onDismiss={handleDismissSuggestion}
+            onSnooze={handleSnoozeSuggestion}
+          />
+        </div>
+      )}
+
       {/* Recollections sliding core panel */}
       <MemoryDashboard
         isOpen={showMemoryDashboard}
@@ -1188,7 +1313,7 @@ export default function App() {
         themeColor={themeColor}
       />
 
-      {/* Settings sliding core panel with integrated Recalls management */}
+      {/* Settings sliding core panel with integrated Recalls and Proactive AI management */}
       <SettingsPanel
         isOpen={showSettings}
         onClose={() => setShowSettings(false)}
@@ -1198,6 +1323,9 @@ export default function App() {
         memories={memories}
         onAddMemory={handleAddManualMemory}
         onDeleteMemory={handleDeleteMemory}
+        proactiveSettings={proactiveSettings || undefined}
+        onUpdateProactiveSettings={handleUpdateProactiveSettings}
+        onResetProactiveFeedback={handleResetProactiveFeedback}
       />
     </div>
   );

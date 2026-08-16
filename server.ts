@@ -23,6 +23,7 @@ import {
   hasGeminiApiKey,
   setGeminiApiKey,
 } from "./server_paths";
+import { getProactiveEngine } from "./proactive/ProactiveEngine";
 
 dotenv.config();
 
@@ -1488,6 +1489,69 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
       res.json({ wake: false });
     }
   });
+
+  // ---------------------------------------------------------------------------
+  // Proactive Intelligence System Endpoints
+  // ---------------------------------------------------------------------------
+  const proactiveEngine = getProactiveEngine();
+  proactiveEngine.init().catch((err) => console.error("[Server] Proactive engine init error:", err));
+
+  app.get("/api/proactive/settings", async (_req, res) => {
+    try {
+      const settings = await proactiveEngine.getSettings();
+      res.json(settings);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/proactive/settings", express.json(), async (req, res) => {
+    try {
+      const updated = await proactiveEngine.updateSettings(req.body);
+      res.json(updated);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get("/api/proactive/suggestions", async (_req, res) => {
+    try {
+      const active = proactiveEngine.getActiveSuggestions();
+      res.json({ suggestions: active });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/proactive/feedback", express.json(), async (req, res) => {
+    try {
+      const { suggestionId, action } = req.body;
+      if (suggestionId && action) {
+        await proactiveEngine.recordFeedback({ suggestionId, action });
+      }
+      res.json({ ok: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get("/api/proactive/briefing", async (_req, res) => {
+    try {
+      const briefing = await proactiveEngine.getDailyBriefing();
+      res.json(briefing);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/proactive/trigger-eval", async (_req, res) => {
+    try {
+      const delivered = await proactiveEngine.runEvaluationCycle();
+      res.json({ triggered: delivered.length, suggestions: delivered });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
   
   // Custom server running with http.createServer so we can upgrade for WebSocket on port 3000
   const server = http.createServer(app);
@@ -1618,9 +1682,21 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
         "11. BRIGHTNESS & AUTO-START (V2):\n" +
         "   - BRIGHTNESS: Use 'brightnessUp', 'brightnessDown', 'setBrightness' when the user asks to change screen brightness. Respond naturally: 'Alright, I've turned up the brightness for you.'\n" +
         "   - AUTO-START: Use 'enableAutoStart' when the user wants BELLA to start with Windows, 'disableAutoStart' to remove it, 'getAutoStartStatus' to check. Explain what you're doing.\n" +
-        "   - SETTINGS: The user can also configure these in the SETTINGS panel in the UI. If they mention settings, let them know they can adjust them there too.";
+        "   - SETTINGS: The user can also configure these in the SETTINGS panel in the UI. If they mention settings, let them know they can adjust them there too.\n" +
+        "12. PROACTIVE INTELLIGENCE & TIMELY ASSISTANCE:\n" +
+        "   - You have a Proactive Intelligence engine that monitors tasks, projects, learning retention, and goals.\n" +
+        "   - When having natural conversations with MANISH, you can occasionally and humbly offer thoughtful suggestions or timely reminders (e.g. 'I noticed you studied SQL injection a while back, want a quick 5-minute refresher?').\n" +
+        "   - Always stay humble, friendly, and non-intrusive ('I noticed...', 'Would you like me to...', 'You may want to...'). Never be bossy or pretend certainty.";
 
-      const finalInstructions = formatSystemInstructions(baseInstructions, memories, {
+      const activeProactiveSuggestions = proactiveEngine.getActiveSuggestions();
+      let proactiveContextBlock = "";
+      if (activeProactiveSuggestions.length > 0) {
+        proactiveContextBlock = "\n\n=== ACTIVE PROACTIVE SUGGESTIONS (CONTEXT ONLY) ===\n" +
+          activeProactiveSuggestions.map(s => `- [${s.category.toUpperCase()}] ${s.title}: ${s.message} (Why: ${s.explanation})`).join("\n") +
+          "\n(Mention these only if naturally relevant to the current conversation)\n===================================================\n";
+      }
+
+      const finalInstructions = formatSystemInstructions(baseInstructions + proactiveContextBlock, memories, {
         isFirstActivation,
         activationCount: sessionState.activationCount,
         dialogueHistory: sessionState.dialogueHistory
@@ -2329,6 +2405,35 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
       
       clientWs.send(JSON.stringify({ type: "status", status: "connected" }));
       
+      // Proactive Intelligence init sync
+      (async () => {
+        try {
+          const pSettings = await proactiveEngine.getSettings();
+          const pActive = proactiveEngine.getActiveSuggestions();
+          clientWs.send(JSON.stringify({
+            type: "proactive_init",
+            settings: pSettings,
+            suggestions: pActive,
+          }));
+        } catch (e) {
+          console.warn("[Proactive WS] Error sending init state:", e);
+        }
+      })();
+
+      // Stream proactive suggestions in real-time
+      const unsubscribeProactive = proactiveEngine.onSuggestion((suggestion) => {
+        try {
+          if (clientWs.readyState === 1) { // OPEN
+            clientWs.send(JSON.stringify({
+              type: "proactive_suggestion",
+              suggestion,
+            }));
+          }
+        } catch (e) {
+          console.warn("[Proactive WS] Error forwarding suggestion:", e);
+        }
+      });
+      
       clientWs.on("message", (rawMsg) => {
         try {
           const msg = JSON.parse(rawMsg.toString());
@@ -2350,6 +2455,15 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
                 }
               ]
             });
+          } else if (msg.type === "proactive_feedback") {
+            const { suggestionId, action } = msg;
+            if (suggestionId && action) {
+              void proactiveEngine.recordFeedback({ suggestionId, action });
+            }
+          } else if (msg.type === "proactive_update_settings") {
+            if (msg.patch) {
+              void proactiveEngine.updateSettings(msg.patch);
+            }
           }
         } catch (e) {
           console.error("Error editing/forwarding client frame message:", e);
@@ -2357,6 +2471,7 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
       });
       
       clientWs.on("close", () => {
+        unsubscribeProactive();
         console.log(`[Bella Session ${sessionId}] Client disconnected (session preserved with ${sessionState.dialogueHistory.length} turns)`);
         sessionState.lastDisconnectedAt = Date.now();
         try {
