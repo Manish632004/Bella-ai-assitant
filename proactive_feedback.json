@@ -111,6 +111,14 @@
       "type": "task_suggestion",
       "action": "dismissed",
       "timestamp": "2026-08-16T16:48:41.085Z"
+    },
+    {
+      "id": "nnvyq4ipj",
+      "suggestionId": "sug-task-due-task-1",
+      "category": "tasks",
+      "type": "task_suggestion",
+      "action": "snoozed",
+      "timestamp": "2026-08-16T16:59:34.348Z"
     }
   ],
   "weights": {

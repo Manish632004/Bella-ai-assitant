@@ -104,7 +104,7 @@ const DESKTOP_TOOLS: ReadonlySet<string> = new Set([
   // browser tabs and navigation
   "previousTab", "nextTab", "browserBack", "browserForward", "newTab", "closeTab",
   // mouse control
-  "mouseMove", "mouseClick", "mouseDoubleClick", "mouseRightClick", "mouseDrag", "mouseScroll",
+  "mouseMove", "mouseClick", "leftClick", "rightClick", "doubleClick", "clickMouse", "mouseDoubleClick", "mouseRightClick", "mouseDrag", "mouseScroll",
   // screenshot / screen reading
   "takeScreenshot", "saveScreenshot", "analyzeScreenshot", "readScreen",
   // browser automation (Playwright — desktop-owned, separate from holographic UI)
@@ -1892,10 +1892,15 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
         "     * When MANISH asks to press Enter (e.g. 'press enter', 'hit enter', 'click enter', 'press return'): CALL 'pressEnter()' immediately! Respond warmly: 'Pressed Enter for you.'\n" +
         "     * When MANISH asks to press a key (e.g. 'press escape', 'press tab', 'press space', 'press backspace'): CALL 'pressKey(key=\"...\")'.\n" +
         "     * Use 'typeText' or 'pasteClipboard' to type or write text into the active application window! Example: If MANISH says 'Open Notion and write a todo list' -> first call openApplication(name='Notion'), then call typeText(text='- Task 1\\n- Task 2') -> respond naturally: 'Notion is open and I\\'ve written your todo list!'\n" +
+        "   - MOUSE & CURSOR CONTROL:\n" +
+        "     * When MANISH asks to click (e.g. 'left click', 'click here', 'click on screen'): CALL 'leftClick()' immediately! Respond: 'Left clicked.'\n" +
+        "     * When MANISH asks to right click (e.g. 'right click', 'show context menu'): CALL 'rightClick()' immediately! Respond: 'Right clicked.'\n" +
+        "     * When MANISH asks to double click: CALL 'doubleClick()'.\n" +
+        "     * When MANISH asks to move cursor or scroll: CALL 'mouseMove' or 'mouseScroll'.\n" +
         "   - BROWSER TABS & NAVIGATION:\n" +
         "     * When MANISH asks to go back to previous tab or next tab (e.g. 'go back to previous tab', 'previous tab', 'switch tab', 'next tab'): CALL 'previousTab()' or 'nextTab()' immediately! Respond warmly: 'Switched to the previous tab for you.'\n" +
         "     * When MANISH asks to go back in browser history (e.g. 'go back in browser', 'browser back', 'previous page'): CALL 'browserBack()'.\n" +
-        "     * When MANISH asks to open a new tab or close tab (e.g. 'open new tab', 'close this tab'): CALL 'newTab()' or 'closeTab()'.\n" +
+        "     * When MANISH asks to open a new tab or close tab (e.g. 'open new tab', 'open a new tab', 'close this tab'): CALL 'newTab()' or 'closeTab()' immediately! Respond: 'Opened a new tab for you.'\n" +
         "   - WEBSITE & SEARCH CONTROL: Use 'openWebsite' for named sites (youtube, gmail, google, github, chatgpt) or any URL. Use 'searchWeb', 'searchYouTube', 'searchGoogle', 'searchGitHub' to open search results in the default browser. Example: 'Search YouTube for AI News' -> searchYouTube(query='AI News').\n" +
         "   - FILE EXPLORER & MANAGEMENT: Use 'openFolder' to open File Explorer (e.g. openFolder(name='downloads')), 'searchFiles' to find files, 'getFileProperties' to inspect a file's size, created/modified date and type, 'copyFile' to copy files, 'moveFile' to move files, 'renameFile' to rename, 'deleteFile' to delete, and 'createFile' to create new files.\n" +
         "   - FILE PROPERTIES & INSPECTION: When MANISH asks 'What is the size of my resume?' or 'Tell me about notes.txt', call getFileProperties(path='Desktop/notes.txt') and read back its formatted size and modified date naturally.\n" +
@@ -2360,6 +2365,16 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
                   parameters: { type: Type.OBJECT, properties: {} }
                 },
                 {
+                  name: "changeSong",
+                  description: "Change the currently playing song or play a requested song on YouTube / Spotify in the default browser. Accepts an optional song or query parameter.",
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      query: { type: Type.STRING, description: "The song title or search query (e.g. 'Barbaad song', 'Levitating Dua Lipa')." }
+                    }
+                  }
+                },
+                {
                   name: "mediaNextTrack",
                   description: "Skip to the next song, video, or track in YouTube, Spotify, or the active browser media player.",
                   parameters: { type: Type.OBJECT, properties: {} }
@@ -2378,6 +2393,62 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
                   name: "mediaStop",
                   description: "Stop media playback on the PC.",
                   parameters: { type: Type.OBJECT, properties: {} }
+                },
+                {
+                  name: "leftClick",
+                  description: "Perform a left mouse click at the current cursor position or optional (x, y) coordinates on screen.",
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      x: { type: Type.NUMBER, description: "Optional X coordinate on screen." },
+                      y: { type: Type.NUMBER, description: "Optional Y coordinate on screen." }
+                    }
+                  }
+                },
+                {
+                  name: "rightClick",
+                  description: "Perform a right mouse click (context menu) at current cursor position or optional (x, y) coordinates on screen.",
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      x: { type: Type.NUMBER, description: "Optional X coordinate on screen." },
+                      y: { type: Type.NUMBER, description: "Optional Y coordinate on screen." }
+                    }
+                  }
+                },
+                {
+                  name: "doubleClick",
+                  description: "Perform a double left click at current cursor position or optional (x, y) coordinates.",
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      x: { type: Type.NUMBER, description: "Optional X coordinate." },
+                      y: { type: Type.NUMBER, description: "Optional Y coordinate." }
+                    }
+                  }
+                },
+                {
+                  name: "mouseMove",
+                  description: "Move the mouse cursor to specific (x, y) coordinates.",
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      x: { type: Type.NUMBER, description: "Target X screen coordinate." },
+                      y: { type: Type.NUMBER, description: "Target Y screen coordinate." }
+                    },
+                    required: ["x", "y"]
+                  }
+                },
+                {
+                  name: "mouseScroll",
+                  description: "Scroll the mouse wheel up or down.",
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      direction: { type: Type.STRING, description: "'up' or 'down'" },
+                      amount: { type: Type.NUMBER, description: "Amount of scroll units (default 300)." }
+                    }
+                  }
                 },
                 {
                   name: "pressEnter",

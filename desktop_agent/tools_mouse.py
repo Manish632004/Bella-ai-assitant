@@ -34,7 +34,10 @@ def mouse_move(args: Dict[str, Any]) -> Dict[str, Any]:
 
 @register("mouseClick")
 @register("mouse.click")
-def mouse_click(args: Dict[str, Any]) -> Dict[str, Any]:
+@register("leftClick")
+@register("clickMouse")
+def mouse_click(args: Dict[str, Any] = None) -> Dict[str, Any]:
+    args = args or {}
     ag = _get_pyautogui()
     x = args.get("x")
     y = args.get("y")
@@ -51,7 +54,9 @@ def mouse_click(args: Dict[str, Any]) -> Dict[str, Any]:
 
 @register("mouseDoubleClick")
 @register("mouse.doubleClick")
-def mouse_double_click(args: Dict[str, Any]) -> Dict[str, Any]:
+@register("doubleClick")
+def mouse_double_click(args: Dict[str, Any] = None) -> Dict[str, Any]:
+    args = args or {}
     ag = _get_pyautogui()
     x = args.get("x")
     y = args.get("y")
@@ -67,7 +72,9 @@ def mouse_double_click(args: Dict[str, Any]) -> Dict[str, Any]:
 
 @register("mouseRightClick")
 @register("mouse.rightClick")
-def mouse_right_click(args: Dict[str, Any]) -> Dict[str, Any]:
+@register("rightClick")
+def mouse_right_click(args: Dict[str, Any] = None) -> Dict[str, Any]:
+    args = args or {}
     args["button"] = "right"
     return mouse_click(args)
 
