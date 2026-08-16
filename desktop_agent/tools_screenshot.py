@@ -1,4 +1,4 @@
-﻿"""
+"""
 Screenshot & screen-reading: capture, save, OCR, and read on-screen text.
 
   takeScreenshot    -> capture full screen, return metadata (+ small base64)
@@ -22,18 +22,91 @@ from typing import Any, Dict, Optional
 
 from .registry import ToolError, register
 
-SCREENSHOTS_DIR = Path(os.path.expanduser("~")) / "Pictures" / "BellaScreenshots"
+SCREENSHOTS_DIR = Path(os.path.expanduser("~")) / "Downloads"
+
+
+def _capture_gdi() -> "Any":
+    """Capture full desktop using Windows GDI BitBlt and GetDIBits."""
+    import ctypes
+    from ctypes import wintypes
+    from PIL import Image
+
+    user32 = ctypes.windll.user32
+    gdi32 = ctypes.windll.gdi32
+
+    try:
+        user32.SetProcessDPIAware()
+    except Exception:
+        pass
+
+    w = user32.GetSystemMetrics(0)  # SM_CXSCREEN
+    h = user32.GetSystemMetrics(1)  # SM_CYSCREEN
+    if w <= 0 or h <= 0:
+        w, h = 1920, 1080
+
+    hdc_screen = user32.GetDC(0)
+    hdc_mem = gdi32.CreateCompatibleDC(hdc_screen)
+    hbm = gdi32.CreateCompatibleBitmap(hdc_screen, w, h)
+    old_bmp = gdi32.SelectObject(hdc_mem, hbm)
+    SRCCOPY = 0x00CC0020
+    gdi32.BitBlt(hdc_mem, 0, 0, w, h, hdc_screen, 0, 0, SRCCOPY)
+
+    class BITMAPINFOHEADER(ctypes.Structure):
+        _fields_ = [
+            ("biSize", wintypes.DWORD),
+            ("biWidth", wintypes.LONG),
+            ("biHeight", wintypes.LONG),
+            ("biPlanes", wintypes.WORD),
+            ("biBitCount", wintypes.WORD),
+            ("biCompression", wintypes.DWORD),
+            ("biSizeImage", wintypes.DWORD),
+            ("biXPelsPerMeter", wintypes.LONG),
+            ("biYPelsPerMeter", wintypes.LONG),
+            ("biClrUsed", wintypes.DWORD),
+            ("biClrImportant", wintypes.DWORD),
+        ]
+
+    class BITMAPINFO(ctypes.Structure):
+        _fields_ = [("bmiHeader", BITMAPINFOHEADER), ("bmiColors", wintypes.DWORD * 3)]
+
+    bmi = BITMAPINFO()
+    bmi.bmiHeader.biSize = ctypes.sizeof(BITMAPINFOHEADER)
+    bmi.bmiHeader.biWidth = w
+    bmi.bmiHeader.biHeight = -h  # top-down
+    bmi.bmiHeader.biPlanes = 1
+    bmi.bmiHeader.biBitCount = 32
+    bmi.bmiHeader.biCompression = 0  # BI_RGB
+
+    buf = (ctypes.c_char * (w * h * 4))()
+    gdi32.GetDIBits(hdc_mem, hbm, 0, h, buf, ctypes.byref(bmi), 0)
+
+    img = Image.frombuffer("RGBA", (w, h), buf, "raw", "BGRA", 0, 1).convert("RGB")
+
+    gdi32.SelectObject(hdc_mem, old_bmp)
+    gdi32.DeleteObject(hbm)
+    gdi32.DeleteDC(hdc_mem)
+    user32.ReleaseDC(0, hdc_screen)
+    return img
 
 
 def _capture() -> "Any":
     """Capture the full virtual screen as a PIL Image."""
+    if os.name == "nt":
+        try:
+            return _capture_gdi()
+        except Exception:
+            pass
     try:
         from PIL import ImageGrab
 
-        img = ImageGrab.grab(all_screens=True)
-        return img
-    except Exception as e:  # noqa: BLE001
-        raise ToolError(f"Screen capture failed: {e}")
+        return ImageGrab.grab(all_screens=True)
+    except Exception:
+        try:
+            from PIL import ImageGrab
+
+            return ImageGrab.grab(all_screens=False)
+        except Exception as e:  # noqa: BLE001
+            raise ToolError(f"Screen capture failed: {e}")
 
 
 def _capture_region(bbox):
@@ -41,8 +114,11 @@ def _capture_region(bbox):
         from PIL import ImageGrab
 
         return ImageGrab.grab(bbox=bbox, all_screens=False)
-    except Exception as e:  # noqa: BLE001
-        raise ToolError(f"Region capture failed: {e}")
+    except Exception:
+        img = _capture()
+        if bbox:
+            return img.crop(bbox)
+        return img
 
 
 def _active_window_bbox():
@@ -150,12 +226,25 @@ def take_screenshot(args: Dict[str, Any]) -> Dict[str, Any]:
 def save_screenshot(args: Dict[str, Any]) -> Dict[str, Any]:
     img = _capture()
     SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
-    stamp = time.strftime("%Y%m%d-%H%M%S")
-    name = args.get("name")
-    fname = f"{name}-{stamp}.png" if name else f"screenshot-{stamp}.png"
+    raw_name = args.get("name") or args.get("filename") or args.get("title") or ""
+    raw_name = str(raw_name).strip()
+
+    if raw_name:
+        clean_name = raw_name.replace(".png", "").replace(".jpg", "").replace(".jpeg", "")
+        for ch in '<>:"/\\|?*':
+            clean_name = clean_name.replace(ch, "_")
+        fname = f"{clean_name}.png"
+    else:
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        fname = f"screenshot-{stamp}.png"
+
     out_path = SCREENSHOTS_DIR / fname
     img.save(out_path, format="PNG")
-    return {"result": f"Saved screenshot to {out_path}.", "path": str(out_path)}
+    return {
+        "result": f"Screenshot '{fname}' successfully saved to your Downloads folder ({out_path}).",
+        "path": str(out_path),
+        "filename": fname,
+    }
 
 
 @register("analyzeScreenshot")

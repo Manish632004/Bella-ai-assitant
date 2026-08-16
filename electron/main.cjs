@@ -226,11 +226,10 @@ function startBackend() {
   }
 
   // Frozen Python desktop agent (bundled as an extraResource when packaged).
-  // In development this file won't exist, so the backend falls back to running
-  // the agent from source with a local Python interpreter.
+  // In development, run the agent from live source with local Python interpreter.
   const agentExe = app.isPackaged
     ? path.join(process.resourcesPath, 'agent', 'bella-agent.exe')
-    : path.join(APP_ROOT, 'agent_dist', 'bella-agent', 'bella-agent.exe');
+    : null;
 
   const env = {
     ...process.env,
@@ -240,7 +239,7 @@ function startBackend() {
     BELLA_DATA_DIR: dataDir,
     BELLA_APP_ROOT: APP_ROOT,
   };
-  if (fs.existsSync(agentExe)) {
+  if (agentExe && fs.existsSync(agentExe)) {
     env.BELLA_AGENT_EXE = agentExe;
   }
 

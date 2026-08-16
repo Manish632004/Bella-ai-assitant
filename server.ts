@@ -344,6 +344,17 @@ function launchAppNative(appName: string): Promise<{ ok: boolean; result?: unkno
     const raw = appName.trim().toLowerCase();
     console.log(`[Native OS] Attempting to open application: ${appName}`);
 
+    // If appName is an existing local file or absolute path, open it directly with default Windows program
+    if (fs.existsSync(appName) || /^[a-zA-Z]:[/\\]/.test(appName) || /\.(png|jpg|jpeg|pdf|txt|docx|xlsx|csv|mp3|mp4|wav)$/i.test(appName)) {
+      console.log(`[Native OS] Opening file/path with default shell: ${appName}`);
+      exec(`powershell -NoProfile -NonInteractive -Command "Start-Process '${appName.replace(/'/g, "''")}'"`, (err) => {
+        if (!err) {
+          return resolve({ ok: true, result: { status: "opened", file: appName } });
+        }
+      });
+      return;
+    }
+
     // If it's a known web app/site and not a native-only tool, launch directly in browser
     if (KNOWN_WEB_SITES[raw]) {
       const webUrl = KNOWN_WEB_SITES[raw];
@@ -806,11 +817,30 @@ async function executeNativeFallback(
       return { ok: true, result: { status: "success", volume: pct, result: `Volume set to ${pct}%.` } };
     }
 
-    // ── Brightness control fallback ──
-    if (tool === "setBrightness" || tool === "brightnessUp" || tool === "brightnessDown") {
-      const pct = Math.max(0, Math.min(100, Math.round(Number(args.percent ?? args.level ?? 60))));
-      exec(`powershell -NoProfile -NonInteractive -Command "Get-CimInstance -Namespace root/WMI -ClassName WmiMonitorBrightnessMethods | Invoke-CimMethod -MethodName WmiSetBrightness -Arguments @{Timeout = 1; Brightness = ${pct}}"`);
-      return { ok: true, result: { status: "success", brightness: pct, result: `Brightness adjusted to ${pct}%.` } };
+    // ── Screenshot fallback ──
+    if (tool === "saveScreenshot" || tool === "takeScreenshot") {
+      const rawName = ((args.name || args.filename || "") as string).trim().replace(/\.png$/i, "").replace(/[<>:"/\\|?*]/g, "_");
+      const stamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
+      const filename = rawName ? `${rawName}.png` : `screenshot-${stamp}.png`;
+      const downloadsDir = path.join(os.homedir(), "Downloads");
+      const outPath = path.join(downloadsDir, filename);
+
+      const ps = `
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+$b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+$bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+$g = [System.Drawing.Graphics]::FromImage($bmp)
+$g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+$bmp.Save('${outPath.replace(/'/g, "''")}', [System.Drawing.Imaging.ImageFormat]::Png)
+$g.Dispose()
+$bmp.Dispose()
+`;
+      const b64 = Buffer.from(ps, "utf16le").toString("base64");
+      await new Promise<void>((resolve) => {
+        exec(`powershell -NoProfile -NonInteractive -EncodedCommand ${b64}`, () => resolve());
+      });
+      return { ok: true, result: { status: "saved", filename, path: outPath, result: `Screenshot '${filename}' saved to Downloads folder (${outPath}).` } };
     }
   } catch (e: any) {
     console.error(`[Native OS] Error executing fallback for ${tool}:`, e);
@@ -820,6 +850,7 @@ async function executeNativeFallback(
 
 const DIRECT_NATIVE_TOOLS = new Set([
   "openApplication", "closeApplication", "openApp", "closeApp",
+  "saveScreenshot", "takeScreenshot",
   "createFile", "writeCodeFile", "createPythonFile", "readFile", "deleteFile",
   "copyFile", "moveFile", "renameFile", "searchFiles", "listFiles",
   "typeText", "pasteClipboard", "getFileProperties", "fileProperties",
@@ -1576,8 +1607,11 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
         "   - FILE PROPERTIES & INSPECTION: When MANISH asks 'What is the size of my resume?' or 'Tell me about notes.txt', call getFileProperties(path='Desktop/notes.txt') and read back its formatted size and modified date naturally.\n" +
         "   - PC CONTROL: Use 'volumeUp', 'volumeDown', 'setVolume', 'muteToggle' for audio. For DANGEROUS actions (shutdown/restart/sleep/lock) you MUST use the two-step flow: first call 'requestPowerAction' to get a confirmation token, then ASK THE USER OUT LOUD to confirm (e.g. 'Are you sure you want me to shut down your PC?'). Only if they say yes, call 'executePowerAction' with the token. Never run a power action without explicit verbal confirmation.\n" +
         "   - WINDOW MANAGEMENT: Use 'minimizeWindow', 'maximizeWindow', 'closeWindow', 'switchApplication' to control the active or named window.\n" +
-        "   - CLIPBOARD: Use 'copySelected' (sends Ctrl+C, reads clipboard), 'pasteClipboard' (writes + Ctrl+V), 'getClipboard', 'clearClipboard'.\n" +
-        "   - SCREENSHOT & SCREEN READING: Use 'takeScreenshot', 'saveScreenshot', 'analyzeScreenshot' (OCR of the screen), 'readScreen' (OCR of the active window + its title). Use these to answer 'What error is showing on my screen?' or 'Read the visible text'.\n" +
+        "   - SCREENSHOT & SCREEN READING: When MANISH asks you to take a screenshot (e.g. 'take a screenshot', 'capture my screen'):\n" +
+        "     * If MANISH hasn't specified a name for the screenshot yet, ask him what name he would like to save it as (e.g., 'Sure! What name should I save the screenshot as?').\n" +
+        "     * When he gives the name (or if he already specified one like 'take a screenshot called my_notes'), call 'saveScreenshot(name=\"...\")'. It will automatically save directly into MANISH's Downloads folder as a PNG file!\n" +
+        "     * Confirm warmly after saving (e.g., 'I\\'ve taken the screenshot and saved it as [name].png in your Downloads folder!').\n" +
+        "     * Use 'analyzeScreenshot' (OCR of the screen) or 'readScreen' (OCR of the active window) to answer 'What error is showing on my screen?' or 'Read the visible text'.\n" +
         "   - CODING ASSISTANCE: Use 'createPythonFile', 'writeCodeFile' (any language), 'createProjectFolder' (with subfolders), 'runPythonScript' (captures output). Example: 'Create and run a hello world Python script' -> createPythonFile then runPythonScript, then read back the output naturally.\n" +
         "   - SYSTEM INFORMATION: Use 'systemInfo' (CPU/RAM/disk/uptime), 'gpuInfo' (NVIDIA stats), 'temperatureInfo' to answer 'How is my CPU usage?' or 'What's my GPU temperature?'.\n" +
         "   - CRITICAL: Always describe what you're doing in your warm, in-character voice WHILE the tool runs. Chain multi-step desktop plans naturally without waiting between steps.\n" +
@@ -1950,8 +1984,8 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
                 },
                 {
                   name: "saveScreenshot",
-                  description: "Save a screenshot to Pictures/BellaScreenshots.",
-                  parameters: { type: Type.OBJECT, properties: { name: { type: Type.STRING, description: "Optional filename prefix." } } }
+                  description: "Save a full screen capture directly as a PNG file into the user's Downloads folder. If the user asks for a screenshot without giving a name, ask them what name to save it as, or pass their chosen name.",
+                  parameters: { type: Type.OBJECT, properties: { name: { type: Type.STRING, description: "The filename (e.g. 'dashboard', 'error_log', 'notes') to save in the Downloads folder." } } }
                 },
                 {
                   name: "analyzeScreenshot",
