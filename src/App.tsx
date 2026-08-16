@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback, type CSSProperties } from "react";
 import { BellaAudioSession, LiveState } from "./lib/audio";
 import { BellaCoreVisualizer, BellaEmotion } from "./components/BellaCoreVisualizer";
 import { BrowserAgent } from "./components/BrowserAgent";
@@ -349,11 +349,55 @@ export default function App() {
     }
   }, []);
 
-  // V2: Wake word detector instance (Web Speech API, lives for the app lifetime)
+  // Sleep mode & activation state:
+  // "none"   = currently active / connected
+  // "auto"   = entered sleep automatically after 60s inactivity (waiting for wake word)
+  // "manual" = manually deactivated by user (wake word muted, requires manual click to activate)
+  const [sleepReason, setSleepReason] = useState<"manual" | "auto" | "none">("manual");
+
+  // V2: Wake word detector instance (Web Speech API + Web Audio VAD, lives for the app lifetime)
   const wakeDetectorRef = useRef<BellaWakeWordDetector | null>(null);
-  // Ref indirection so the wake-word callback always calls the latest connect
-  // handler, regardless of where it's declared in the component body.
+  // Ref indirection so the wake-word callback always calls the latest wake/connect handler
   const connectHandlerRef = useRef<() => void>(() => {});
+
+  // 60-Second Auto-Sleep Inactivity Timer
+  const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoSleepSeconds = settings.autoSleepSeconds || 60;
+
+  const resetInactivityTimer = useCallback(() => {
+    if (inactivityTimerRef.current) {
+      clearTimeout(inactivityTimerRef.current);
+      inactivityTimerRef.current = null;
+    }
+
+    if (state === "disconnected") return;
+
+    inactivityTimerRef.current = setTimeout(() => {
+      console.log(`[Auto-Sleep] ${autoSleepSeconds}s of non-interaction elapsed. Transitioning Bella to auto-sleep standby (listening for wake word)...`);
+      setSleepReason("auto");
+      if (sessionRef.current && sessionRef.current.getState() !== "disconnected") {
+        sessionRef.current.disconnect();
+      }
+    }, autoSleepSeconds * 1000);
+  }, [state, autoSleepSeconds]);
+
+  // Maintain auto-sleep timer whenever connection state changes
+  useEffect(() => {
+    if (state !== "disconnected") {
+      resetInactivityTimer();
+    } else {
+      if (inactivityTimerRef.current) {
+        clearTimeout(inactivityTimerRef.current);
+        inactivityTimerRef.current = null;
+      }
+    }
+    return () => {
+      if (inactivityTimerRef.current) {
+        clearTimeout(inactivityTimerRef.current);
+        inactivityTimerRef.current = null;
+      }
+    };
+  }, [state, resetInactivityTimer]);
 
   // Initialize wake detector once on mount.
   useEffect(() => {
@@ -364,16 +408,20 @@ export default function App() {
     };
   }, []);
 
-  // Start / stop wake word detection when the setting changes.
+  // Start / stop wake word detection:
+  // ONLY listen for wake word when in "auto" sleep standby (after 60s inactivity).
+  // If user MANUALLY deactivated Bella (sleepReason === "manual"), wake word is completely disabled!
   useEffect(() => {
     const det = wakeDetectorRef.current;
     if (!det) return;
-    if (settings.wakeWordEnabled && state === "disconnected") {
+    if (settings.wakeWordEnabled && state === "disconnected" && sleepReason === "auto") {
+      console.log(`[Wake Word] Auto-sleep standby active. Listening for "${settings.wakePhrase}" to auto-wake...`);
       det.start({
         phrase: settings.wakePhrase,
         sensitivity: settings.sensitivity,
         onTriggered: () => {
-          // When wake word fires, stop detector and connect BELLA.
+          console.log("[Wake Word] Wake phrase detected! Auto-waking Bella from standby.");
+          setSleepReason("none");
           det.stop();
           connectHandlerRef.current();
         },
@@ -381,7 +429,7 @@ export default function App() {
     } else {
       det.stop();
     }
-  }, [settings.wakeWordEnabled, settings.wakePhrase, settings.sensitivity, state]);
+  }, [settings.wakeWordEnabled, settings.wakePhrase, settings.sensitivity, state, sleepReason]);
 
   // Handle settings changes: persist to localStorage + update state.
   const handleSettingsChange = (patch: Partial<BellaSettings>) => {
@@ -433,6 +481,11 @@ export default function App() {
     }
   };
 
+  const resetInactivityTimerRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    resetInactivityTimerRef.current = resetInactivityTimer;
+  }, [resetInactivityTimer]);
+
   // Initialize the audio session handlers once on mount
   useEffect(() => {
     sessionRef.current = new BellaAudioSession({
@@ -448,11 +501,14 @@ export default function App() {
           // Return to receptive resting state
           setActiveEmotion("idle");
           setCharacterState("idle");
+          resetInactivityTimerRef.current();
         } else if (newState === "speaking") {
           setCharacterState("talking");
+          resetInactivityTimerRef.current();
         }
       },
       onTranscription: (role, text) => {
+        resetInactivityTimerRef.current();
         if (role === "user") {
           setUserCaption(text);
           // Auto-clear the other caption when user starts talking
@@ -470,6 +526,7 @@ export default function App() {
         }
       },
       onToolCall: (name, args, callback) => {
+        resetInactivityTimerRef.current();
         console.log(`[App] Tool call triggered: ${name}`, args);
         
         const browserTools = [
@@ -548,8 +605,10 @@ export default function App() {
     if (!sessionRef.current) return;
 
     if (state === "disconnected") {
+      setSleepReason("none");
       await sessionRef.current.connect();
     } else {
+      setSleepReason("manual");
       sessionRef.current.disconnect();
     }
   };
@@ -625,7 +684,7 @@ export default function App() {
       {!isMiniMode && (window as any)?.bella?.isDesktop && (
         <div
           className="absolute top-0 left-0 right-0 z-[999] flex items-center justify-between h-10 select-none backdrop-blur-xl bg-white/[0.03] border-b border-white/[0.06] shadow-[0_1px_12px_rgba(0,0,0,0.3)]"
-          style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+          style={{ WebkitAppRegion: 'drag' } as CSSProperties}
         >
           {/* Left side - app title with subtle glass accent */}
           <div className="flex items-center gap-2.5 pl-4">
@@ -637,7 +696,7 @@ export default function App() {
           {/* Right side - window controls (no-drag so buttons work) */}
           <div
             className="flex items-center h-full"
-            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+            style={{ WebkitAppRegion: 'no-drag' } as CSSProperties}
           >
             <button
               onClick={() => (window as any).bella.minimizeWindow()}
@@ -691,19 +750,57 @@ export default function App() {
                   <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
                     state === "speaking" ? "bg-purple-400" :
                     state === "listening" ? "bg-cyan-400" :
-                    state === "connecting" ? "bg-amber-400" : "hidden"
+                    state === "connecting" ? "bg-amber-400" :
+                    sleepReason === "auto" ? "bg-amber-400" : "hidden"
                   }`} />
                   <span className={`relative inline-flex rounded-full h-2 w-2 ${
                     state === "speaking" ? "bg-purple-400" :
                     state === "listening" ? "bg-cyan-400" :
-                    state === "connecting" ? "bg-amber-400" : "bg-white/20"
+                    state === "connecting" ? "bg-amber-400" :
+                    sleepReason === "auto" ? "bg-amber-400/90" : "bg-white/20"
                   }`} />
+                </span>
+                <span className="text-[9px] font-mono tracking-wider text-white/40 uppercase hidden sm:inline">
+                  {state === "speaking" ? "SPEAKING" :
+                   state === "listening" ? "LISTENING" :
+                   state === "connecting" ? "LINKING" :
+                   sleepReason === "auto" ? "STANDBY (SAY WAKE WORD)" : "INACTIVE"}
                 </span>
               </div>
             </div>
 
             {/* Right Action Glass Pill Buttons */}
             <div className="flex items-center gap-2">
+              {/* Manual Master Activation / Deactivation Button */}
+              <button
+                onClick={() => {
+                  if (state === "disconnected") {
+                    setSleepReason("none");
+                    sessionRef.current?.connect();
+                  } else {
+                    setSleepReason("manual");
+                    sessionRef.current?.disconnect();
+                  }
+                }}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border text-[11px] font-mono tracking-wider transition-all duration-200 cursor-pointer ${
+                  state !== "disconnected"
+                    ? "bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border-rose-500/40 shadow-[0_0_12px_rgba(244,63,94,0.3)] font-semibold"
+                    : sleepReason === "auto"
+                    ? "bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border-amber-500/40 shadow-[0_0_12px_rgba(245,158,11,0.25)] font-semibold"
+                    : "bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border-emerald-500/40 shadow-[0_0_12px_rgba(16,185,129,0.25)] font-semibold"
+                }`}
+                title={
+                  state !== "disconnected"
+                    ? "Manually Deactivate Bella (Disables wake word until manual activation)"
+                    : sleepReason === "auto"
+                    ? "Wake up Bella immediately (or say 'Hey Bella')"
+                    : "Manually Activate Bella"
+                }
+              >
+                <Power size={13} className={state !== "disconnected" ? "text-rose-400" : sleepReason === "auto" ? "text-amber-400" : "text-emerald-400"} />
+                <span>{state !== "disconnected" ? "DEACTIVATE" : sleepReason === "auto" ? "WAKE UP" : "ACTIVATE"}</span>
+              </button>
+
               {/* Float / Mini Mode Button */}
               <button
                 onClick={() => setIsMiniMode(!isMiniMode)}

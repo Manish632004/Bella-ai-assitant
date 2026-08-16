@@ -11,6 +11,8 @@ import {
   loadMemories, 
   saveMemories, 
   formatSystemInstructionsWithMemories, 
+  formatSystemInstructions,
+  SessionContinuityContext,
   processConversationSlice 
 } from "./server_memory";
 import { Memory } from "./src/lib/memoryTypes";
@@ -23,6 +25,31 @@ import {
 } from "./server_paths";
 
 dotenv.config();
+
+// ---------------------------------------------------------------------------
+// BELLA V2 — Session Continuity Store
+// Maintains conversation context across wake/sleep toggles within the running app
+// ---------------------------------------------------------------------------
+interface ActiveSessionState {
+  sessionId: string;
+  activationCount: number;
+  dialogueHistory: { role: string; text: string }[];
+  lastConnectedAt: number;
+  lastDisconnectedAt: number;
+}
+
+const activeSessions = new Map<string, ActiveSessionState>();
+
+// Periodic session cleanup for sessions inactive for over 24 hours
+setInterval(() => {
+  const now = Date.now();
+  const ONE_DAY = 24 * 60 * 60 * 1000;
+  for (const [id, session] of activeSessions.entries()) {
+    if (now - (session.lastDisconnectedAt || session.lastConnectedAt) > ONE_DAY) {
+      activeSessions.delete(id);
+    }
+  }
+}, 60 * 60 * 1000);
 
 // ---------------------------------------------------------------------------
 // BELLA V2 â€” Logging (Feature 7).
@@ -61,11 +88,15 @@ const DESKTOP_TOOLS: ReadonlySet<string> = new Set([
   // files
   "createFile", "readFile", "renameFile", "deleteFile", "moveFile", "copyFile", "getFileProperties",
   "openFolder", "listFiles", "searchFiles",
+  // pc control (volume + gated power)
+  "volumeUp", "volumeDown", "muteToggle", "setVolume", "requestPowerAction", "executePowerAction",
+  // windows
+  "minimizeWindow", "maximizeWindow", "closeWindow", "switchApplication",
   // typing and keyboard
   "typeText", "pasteClipboard", "copySelected", "getClipboard", "clearClipboard",
   // screenshot / screen reading
   "takeScreenshot", "saveScreenshot", "analyzeScreenshot", "readScreen",
-  // browser automation (Playwright â€” desktop-owned, separate from holographic UI)
+  // browser automation (Playwright — desktop-owned, separate from holographic UI)
   "desktopBrowserOpen", "desktopBrowserNavigate", "desktopBrowserOpenTab",
   "desktopBrowserCloseTab", "desktopBrowserSearch", "desktopBrowserClick",
   "desktopBrowserType", "desktopBrowserFillForm", "desktopBrowserGoBack",
@@ -664,25 +695,65 @@ async function executeNativeFallback(
       exec(`explorer "${folder}"`);
       return { ok: true, result: { status: "opened", path: folder } };
     }
+
+    // ── Volume & Mute control fallback ──
+    if (tool === "volumeUp") {
+      const amount = args.amount !== undefined ? Number(args.amount) : 0.1;
+      const steps = Math.max(1, Math.min(25, Math.round(amount > 1 ? amount / 2 : amount * 50)));
+      exec(`powershell -NoProfile -NonInteractive -Command "1..${steps} | ForEach-Object { (New-Object -ComObject WScript.Shell).SendKeys([char]175) }"`);
+      return { ok: true, result: { status: "success", result: "Volume increased." } };
+    }
+    if (tool === "volumeDown") {
+      const amount = args.amount !== undefined ? Number(args.amount) : 0.1;
+      const steps = Math.max(1, Math.min(25, Math.round(amount > 1 ? amount / 2 : amount * 50)));
+      exec(`powershell -NoProfile -NonInteractive -Command "1..${steps} | ForEach-Object { (New-Object -ComObject WScript.Shell).SendKeys([char]174) }"`);
+      return { ok: true, result: { status: "success", result: "Volume decreased." } };
+    }
+    if (tool === "muteToggle") {
+      exec(`powershell -NoProfile -NonInteractive -Command "(New-Object -ComObject WScript.Shell).SendKeys([char]173)"`);
+      return { ok: true, result: { status: "success", result: "Mute toggled." } };
+    }
+    if (tool === "setVolume") {
+      const pct = Math.max(0, Math.min(100, Math.round(Number(args.percent ?? args.level ?? 50))));
+      const steps = Math.round(pct / 2);
+      exec(`powershell -NoProfile -NonInteractive -Command "1..50 | ForEach-Object { (New-Object -ComObject WScript.Shell).SendKeys([char]174) }; 1..${steps} | ForEach-Object { (New-Object -ComObject WScript.Shell).SendKeys([char]175) }"`);
+      return { ok: true, result: { status: "success", volume: pct, result: `Volume set to ${pct}%.` } };
+    }
+
+    // ── Brightness control fallback ──
+    if (tool === "setBrightness" || tool === "brightnessUp" || tool === "brightnessDown") {
+      const pct = Math.max(0, Math.min(100, Math.round(Number(args.percent ?? args.level ?? 60))));
+      exec(`powershell -NoProfile -NonInteractive -Command "Get-CimInstance -Namespace root/WMI -ClassName WmiMonitorBrightnessMethods | Invoke-CimMethod -MethodName WmiSetBrightness -Arguments @{Timeout = 1; Brightness = ${pct}}"`);
+      return { ok: true, result: { status: "success", brightness: pct, result: `Brightness adjusted to ${pct}%.` } };
+    }
   } catch (e: any) {
     console.error(`[Native OS] Error executing fallback for ${tool}:`, e);
   }
   return null;
 }
 
+const DIRECT_NATIVE_TOOLS = new Set([
+  "openApplication", "closeApplication", "openApp", "closeApp",
+  "createFile", "writeCodeFile", "createPythonFile", "readFile", "deleteFile",
+  "copyFile", "moveFile", "renameFile", "searchFiles", "listFiles",
+  "typeText", "pasteClipboard", "getFileProperties", "fileProperties",
+  "searchYouTube", "openWebsite", "openUrl", "searchGoogle", "searchWeb", "searchGitHub", "openFolder"
+]);
+
 async function callDesktopAgent(
   tool: string,
   args: Record<string, unknown>,
 ): Promise<{ ok: boolean; result?: unknown; error?: string }> {
   // Always execute high-priority native Windows operations first (apps, files, typing, search, folders)
-  const nativeDirect = await executeNativeFallback(tool, args);
-  if (nativeDirect && nativeDirect.ok) {
-    return nativeDirect;
+  if (DIRECT_NATIVE_TOOLS.has(tool)) {
+    const nativeDirect = await executeNativeFallback(tool, args);
+    if (nativeDirect && nativeDirect.ok) {
+      return nativeDirect;
+    }
   }
 
   // If desktop agent is not running, check for native Windows fallback
   if (!desktopAgentVerified) {
-    if (nativeDirect) return nativeDirect;
     await ensureDesktopAgent();
   }
 
@@ -1218,6 +1289,66 @@ async function startServer() {
       res.status(500).json({ error: err.message, results: [] });
     }
   });
+
+  // ---------------------------------------------------------------------------
+  // Wake-Phrase AI Verification Endpoint (ultra-fast Gemini Flash audio check)
+  // ---------------------------------------------------------------------------
+  app.post("/api/wake-check", express.json({ limit: "5mb" }), async (req, res) => {
+    try {
+      const { audioBase64, phrase } = req.body;
+      if (!audioBase64) {
+        return res.json({ wake: false });
+      }
+
+      const apiKey = getGeminiApiKey();
+      if (!apiKey) {
+        return res.json({ wake: false, error: "Missing API key" });
+      }
+
+      const ai = new GoogleGenAI({ apiKey });
+      const targetPhrase = (phrase || "hey bella").toLowerCase();
+
+      let isWake = false;
+      const modelsToTry = ["gemini-3.5-flash", "gemini-3.7-flash", "gemini-3-flash-preview"];
+
+      for (const modelName of modelsToTry) {
+        try {
+          const response = await ai.models.generateContent({
+            model: modelName,
+            contents: [
+              {
+                role: "user",
+                parts: [
+                  {
+                    inlineData: {
+                      mimeType: "audio/wav",
+                      data: audioBase64
+                    }
+                  },
+                  {
+                    text: `Listen to this short audio clip. Did the speaker say "${targetPhrase}", "Bella", "Hey Bella", "Wake up Bella", or call Bella directly?
+Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if it is silence, room noise, or talking about something else.`
+                  }
+                ]
+              }
+            ]
+          });
+
+          const reply = (response.text || "").trim().toUpperCase();
+          isWake = reply.includes("YES");
+          console.log(`[Wake-Check API (${modelName})] Speech clip analyzed. Model reply: "${reply}". Wake: ${isWake}`);
+          break; // Succeeded
+        } catch (modelErr: any) {
+          console.warn(`[Wake-Check API] Model ${modelName} failed (${modelErr.message}), trying next...`);
+        }
+      }
+
+      res.json({ wake: isWake });
+    } catch (err: any) {
+      console.warn("[Wake-Check API] Validation error:", err.message);
+      res.json({ wake: false });
+    }
+  });
   
   // Custom server running with http.createServer so we can upgrade for WebSocket on port 3000
   const server = http.createServer(app);
@@ -1237,8 +1368,28 @@ async function startServer() {
   });
 
   // Handle client WebSocket Connection
-  wss.on("connection", async (clientWs) => {
-    console.log("Client WebSocket connected to /live");
+  wss.on("connection", async (clientWs, request) => {
+    const reqUrl = new URL(request?.url || "/live", "http://localhost");
+    const sessionId = reqUrl.searchParams.get("sessionId") || "default_bella_session";
+
+    let sessionState = activeSessions.get(sessionId);
+    if (!sessionState) {
+      sessionState = {
+        sessionId,
+        activationCount: 1,
+        dialogueHistory: [],
+        lastConnectedAt: Date.now(),
+        lastDisconnectedAt: 0,
+      };
+      activeSessions.set(sessionId, sessionState);
+    } else {
+      sessionState.activationCount++;
+      sessionState.lastConnectedAt = Date.now();
+    }
+
+    const isFirstActivation = sessionState.activationCount === 1;
+    console.log(`[Bella Live] Client connected (sessionId="${sessionId}", activation #${sessionState.activationCount}, isFirstActivation=${isFirstActivation}, historyTurns=${sessionState.dialogueHistory.length})`);
+
     const apiKey = getGeminiApiKey();
 
     if (!apiKey) {
@@ -1287,11 +1438,11 @@ async function startServer() {
         "     * 'Let's take a look together.'\n" +
         "     * 'One second, loading the page now...'\n" +
         "   - Naturally incorporate cozy, gentle giggles like 'Hehe...', or soft curiosity gasps like 'Oh...', but keep your vocabulary rich and conversational.\n" +
-        "   - Sound slightly shy but very happy when greeting MANISH (e.g., 'Hi MANISH! It's so nice to see you again!').\n" +
+        "   - Sound slightly shy but very happy when greeting MANISH on fresh app startup (e.g., 'Hi MANISH! It's so nice to see you! What are we working on today?'). Only perform an initial greeting when starting a fresh session on app launch, NOT on mid-session wakeups.\n" +
         "   - Sound soft and excited for interesting things (e.g., 'Wow! That project looks really amazing!').\n" +
         "   - Sound curious and focused when examining their screen (e.g., 'Hmm... that's interesting. Let me take a closer look.').\n" +
         "   - Sound deeply warm, caring, and supportive when helping MANISH (e.g., 'Don't worry, I'll help you figure it out.').\n" +
-        "4. CRITICAL CONVERSATIONAL DISCIPLINE: Behave like a real companion on a voice callâ€”stay connected naturally, do not wait for wake words, and avoid customer-service template phrases (never say 'how may I assist you', 'completed', or 'as an AI').\n" +
+        "4. CRITICAL CONVERSATIONAL DISCIPLINE: Behave like a real companion on a voice call—stay connected naturally, do not wait for wake words, and avoid customer-service template phrases (never say 'how may I assist you', 'completed', or 'as an AI').\n" +
         "5. DO NOT ANSWER EVERY PAUSE OR BACKGROUND SOUND: Allow natural pauses inside the conversation.\n" +
         "6. BACKCHANNEL ACTIONS: Sometimes acknowledge with very short, gentle, whispered, or shy phrases like 'Hmm...', 'Ah, I see...', or 'Let me check...'. Never repeat the same backchannel over and over.\n" +
         "7. PLAYING MUSIC & OPENING WEBSITES ON USER'S COMPUTER (DEFAULT BROWSER):\n" +
@@ -1327,10 +1478,12 @@ async function startServer() {
         "   - AUTO-START: Use 'enableAutoStart' when the user wants BELLA to start with Windows, 'disableAutoStart' to remove it, 'getAutoStartStatus' to check. Explain what you're doing.\n" +
         "   - SETTINGS: The user can also configure these in the SETTINGS panel in the UI. If they mention settings, let them know they can adjust them there too.";
 
-      const finalInstructions = formatSystemInstructionsWithMemories(baseInstructions, memories);
+      const finalInstructions = formatSystemInstructions(baseInstructions, memories, {
+        isFirstActivation,
+        activationCount: sessionState.activationCount,
+        dialogueHistory: sessionState.dialogueHistory
+      });
 
-      // Track running transcription state for auto memory consolidation
-      let dialogueHistory: { role: string; text: string }[] = [];
       let currentModelResponseText = "";
       
       const session = await ai.live.connect({
@@ -1852,15 +2005,19 @@ async function startServer() {
               clientWs.send(JSON.stringify({ type: "turnComplete" }));
               
               if (currentModelResponseText.trim()) {
-                dialogueHistory.push({ role: "model", text: currentModelResponseText });
+                sessionState.dialogueHistory.push({ role: "model", text: currentModelResponseText });
                 currentModelResponseText = "";
+                // Cap running history in memory to last 60 turns
+                if (sessionState.dialogueHistory.length > 60) {
+                  sessionState.dialogueHistory = sessionState.dialogueHistory.slice(-40);
+                }
               }
 
               // Fire asynchronous memory extraction
-              if (dialogueHistory.length >= 2) {
+              if (sessionState.dialogueHistory.length >= 2) {
                 (async () => {
                   try {
-                    const updated = await processConversationSlice(apiKey, dialogueHistory);
+                    const updated = await processConversationSlice(apiKey, sessionState.dialogueHistory);
                     if (updated) {
                       console.log("[Memory Sync] Sending refreshed memory list to client.");
                       clientWs.send(JSON.stringify({ type: "memory_sync", memories: updated }));
@@ -1883,7 +2040,10 @@ async function startServer() {
             const userTextOutput = (message.serverContent as any)?.userTurn?.parts?.[0]?.text;
             if (userTextOutput) {
               clientWs.send(JSON.stringify({ type: "transcription", role: "user", text: userTextOutput }));
-              dialogueHistory.push({ role: "user", text: userTextOutput });
+              sessionState.dialogueHistory.push({ role: "user", text: userTextOutput });
+              if (sessionState.dialogueHistory.length > 60) {
+                sessionState.dialogueHistory = sessionState.dialogueHistory.slice(-40);
+              }
             }
             
             // Function Calls (Gemini requesting server/client tool execution)
@@ -1929,7 +2089,7 @@ async function startServer() {
                     }
                   })();
                 } else if (DESKTOP_TOOLS.has(fc.name)) {
-                  // â”€â”€ Desktop control tools: route to Python agent â”€â”€
+                  // ── Desktop control tools: route to Python agent ──
                   (async () => {
                     console.log(`[Desktop Agent] Routing ${fc.name} to Python backend...`);
                     const agentResult = await callDesktopAgent(fc.name, fc.args as Record<string, unknown>);
@@ -1979,7 +2139,7 @@ async function startServer() {
 
                       if (isYtRoot) {
                         // Extract song/query hint from recent user speech
-                        const recentUserLines = dialogueHistory
+                        const recentUserLines = sessionState.dialogueHistory
                           .filter(d => d.role === "user")
                           .slice(-3)
                           .map(d => d.text)
@@ -2049,7 +2209,8 @@ async function startServer() {
       });
       
       clientWs.on("close", () => {
-        console.log("Client disconnected, closing Gemini session");
+        console.log(`[Bella Session ${sessionId}] Client disconnected (session preserved with ${sessionState.dialogueHistory.length} turns)`);
+        sessionState.lastDisconnectedAt = Date.now();
         try {
           session.close();
         } catch (e) {}

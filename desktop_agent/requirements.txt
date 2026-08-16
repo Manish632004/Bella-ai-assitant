@@ -1,4 +1,4 @@
-﻿# BELLA Desktop Control Agent â€” Python dependencies
+# BELLA Desktop Control Agent â€” Python dependencies
 # Install with the Python 3.11 interpreter, e.g.:
 #   "C:\Users\MSI\AppData\Local\Programs\Python\Python311\python.exe" -m pip install -r requirements.txt
 # Then install the Playwright browser once:
@@ -18,7 +18,8 @@ pywin32==308
 pyperclip==1.9.0
 pytesseract==0.3.13
 Pillow==11.0.0
-pycaw==20230407
+pycaw>=20230407
+screen-brightness-control>=0.23.0
 pygetwindow==0.0.9
 Send2Trash==1.8.3
 python-multipart==0.0.20

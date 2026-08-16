@@ -89,6 +89,7 @@ export class BellaAudioSession {
   
   private currentState: LiveState = "disconnected";
   private isActivated = false;
+  private sessionId: string;
 
   constructor(handlers: {
     onStateChange: (state: LiveState) => void;
@@ -98,6 +99,7 @@ export class BellaAudioSession {
     onMemorySync?: (memories: any[]) => void;
     onMiniModeChange?: (enabled: boolean) => void;
   }) {
+    this.sessionId = `bella_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     this.onStateChange = handlers.onStateChange;
     this.onTranscription = handlers.onTranscription;
     this.onToolCall = handlers.onToolCall;
@@ -116,6 +118,10 @@ export class BellaAudioSession {
     return this.currentState;
   }
 
+  public getSessionId(): string {
+    return this.sessionId;
+  }
+
   /**
    * Pushes a compressed JPEG base64 screenshot frame directly to the live WebSocket server.
    */
@@ -132,13 +138,13 @@ export class BellaAudioSession {
     this.setState("connecting");
 
     try {
-      // 1. Establish custom WebSocket server bridge
+      // 1. Establish custom WebSocket server bridge with persistent session ID
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      this.ws = new WebSocket(`${protocol}//${window.location.host}/live`);
+      this.ws = new WebSocket(`${protocol}//${window.location.host}/live?sessionId=${encodeURIComponent(this.sessionId)}`);
       this.ws.binaryType = "blob";
 
       this.ws.onopen = async () => {
-        console.log("[Bella] Connected to server side WS bridge");
+        console.log("[Bella] Connected to server side WS bridge (sessionId:", this.sessionId, ")");
         try {
           // Guard against early user disconnect during connection setup
           if (!this.isActivated) return;
@@ -308,19 +314,25 @@ export class BellaAudioSession {
       };
 
       this.ws.onerror = (wsError) => {
-        console.error("WebSocket transport error:", wsError);
+        if (!this.isActivated) return;
+        console.warn("WebSocket transport error:", wsError);
         this.onError("Holographic network link lost. Please check connection.");
         this.disconnect();
       };
 
-      this.ws.onclose = () => {
-        console.log("WebSocket connection closed");
+      this.ws.onclose = (event) => {
+        console.log("WebSocket connection closed", event.code, event.reason);
+        if (this.isActivated && event.code !== 1000 && event.code !== 1005) {
+          this.onError("Holographic link disconnected. Re-awake Bella to continue.");
+        }
         this.disconnect();
       };
 
     } catch (e: any) {
       console.error("Connection establish sequence failed:", e);
-      this.onError(e.message || "Failed to initialize active channel.");
+      if (this.isActivated) {
+        this.onError(e.message || "Failed to initialize active channel.");
+      }
       this.disconnect();
     }
   }
@@ -400,12 +412,19 @@ export class BellaAudioSession {
     this.isActivated = false;
     this.setState("disconnected");
 
-    // Close WS socket
+    // Close WS socket cleanly without triggering error handler
     if (this.ws) {
       try {
-        this.ws.close();
+        const socket = this.ws;
+        this.ws = null;
+        socket.onopen = null;
+        socket.onmessage = null;
+        socket.onerror = null;
+        socket.onclose = null;
+        if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+          socket.close(1000, "Normal sleep/disconnect");
+        }
       } catch (e) {}
-      this.ws = null;
     }
 
     // Stop and release user microphone streams

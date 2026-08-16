@@ -1,4 +1,4 @@
-﻿/**
+/**
  * BELLA Settings Store â€” persistent user preferences (V2).
  *
  * Establishes the persistence pattern for BELLA: settings are mirrored to
@@ -23,15 +23,18 @@ export interface BellaSettings {
   sensitivity: number;
   /** Master toggle for UI animations. */
   animations: boolean;
+  /** Inactivity duration (in seconds) before Bella auto-sleeps. Default: 60 seconds. */
+  autoSleepSeconds: number;
 }
 
 export const DEFAULT_SETTINGS: BellaSettings = {
   autoStart: false,
-  wakeWordEnabled: false,
+  wakeWordEnabled: true,
   wakePhrase: "hey bella",
   micDeviceId: "",
   sensitivity: 60,
   animations: true,
+  autoSleepSeconds: 60,
 };
 
 const STORAGE_KEY = "bella.settings.v2";

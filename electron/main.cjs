@@ -22,6 +22,9 @@ const http = require('http');
 const { spawn } = require('child_process');
 const fs = require('fs');
 
+// Suppress internal Chromium network debug logs (e.g. chunked_data_pipe stream logs from Web Speech API)
+app.commandLine.appendSwitch('log-level', '3');
+
 // --- Constants -------------------------------------------------------------
 const SERVER_PORT = 3000;
 const SERVER_ORIGIN = `http://localhost:${SERVER_PORT}`;

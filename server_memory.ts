@@ -78,6 +78,59 @@ export function formatSystemInstructionsWithMemories(baseInstruction: string, me
   return baseInstruction + memoryBlock;
 }
 
+export interface SessionContinuityContext {
+  isFirstActivation: boolean;
+  activationCount: number;
+  dialogueHistory: { role: string; text: string }[];
+}
+
+/**
+ * Format instructions combining persistent memories and real-time app session state.
+ * Ensures Bella only performs an opening greeting when first launched, and resumes seamlessly without greeting on mid-session wakeups.
+ */
+export function formatSystemInstructions(
+  baseInstruction: string,
+  memories: Memory[],
+  sessionContext?: SessionContinuityContext
+): string {
+  let instructions = formatSystemInstructionsWithMemories(baseInstruction, memories);
+
+  if (sessionContext) {
+    if (sessionContext.isFirstActivation) {
+      instructions +=
+        "\n\n" +
+        "=== SESSION LIFECYCLE: FRESH APP LAUNCH (FIRST ACTIVATION) ===\n" +
+        "MANISH has just launched/opened the BELLA application, and this is your FIRST interaction of this app session.\n" +
+        "- Warmly and affectionately greet MANISH (e.g., 'Hi MANISH! It's so nice to see you! What are we working on today?').\n" +
+        "- Ask what he would like to do or how you can assist him today.\n" +
+        "===============================================================\n";
+    } else {
+      const recentTurns = (sessionContext.dialogueHistory || []).slice(-16);
+      const dialogueText = recentTurns.length > 0
+        ? recentTurns.map(d => `${d.role === "user" ? "MANISH" : "BELLA"}: ${d.text}`).join("\n")
+        : "(Session active; previous dialogue in context)";
+
+      instructions +=
+        "\n\n" +
+        "=== SESSION LIFECYCLE: ACTIVE SESSION RESUMPTION (DO NOT RE-GREET) ===\n" +
+        "MANISH has just re-activated / woken you back up in the SAME running app session. You were ALREADY actively conversing with MANISH right before this pause.\n\n" +
+        "CRITICAL RESUMPTION RULES:\n" +
+        "1. STRICT NO-GREETING MANDATE: DO NOT greet MANISH as if you are meeting for the first time.\n" +
+        "   - NEVER say 'Hi MANISH! It's so nice to see you again!' or 'How can I assist you today?' or 'What would you like to do?'.\n" +
+        "   - NEVER restart or reset the conversation.\n" +
+        "2. SEAMLESS CONTINUATION FROM WHERE YOU LEFT OFF:\n" +
+        "   - Retain complete memory and continuity of what you and MANISH were discussing or doing earlier in this session.\n" +
+        "   - If MANISH immediately gives a command, asks a question, or shares something upon waking you, respond to or execute it directly without any greeting.\n" +
+        "   - If MANISH wakes you with just your wake phrase ('Hey Bella') or unmuting without an immediate command, give a very brief, sweet, natural ready signal (e.g., 'I'm right here!', 'Ready!', 'Mm-hmm, let's keep going!', or 'Yes MANISH?') and wait for his instruction.\n\n" +
+        "RECENT CONVERSATION IN THIS SESSION (BEFORE PAUSE):\n" +
+        dialogueText + "\n" +
+        "======================================================================\n";
+    }
+  }
+
+  return instructions;
+}
+
 // Background memory consolidation queue lock
 let isConsolidating = false;
 

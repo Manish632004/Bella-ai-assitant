@@ -545,18 +545,36 @@ export function SettingsPanel({
 
                   <ToggleRow
                     label="WAKE WORD DETECTION"
-                    description="Listen continuously for 'Hey Bella' / 'Bella'"
+                    description="Listen continuously for wake phrase while Bella sleeps"
                     checked={settings.wakeWordEnabled}
                     onChange={(v) => onChange({ wakeWordEnabled: v })}
                   />
+
+                  {settings.wakeWordEnabled && (
+                    <div className="space-y-1.5">
+                      <label className="block text-[10px] font-mono tracking-wider text-slate-300 uppercase">
+                        Wake Phrase
+                      </label>
+                      <input
+                        type="text"
+                        value={settings.wakePhrase}
+                        onChange={(e) => onChange({ wakePhrase: e.target.value })}
+                        placeholder="e.g. hey bella"
+                        className="w-full bg-slate-900/90 border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-cyan-400 placeholder:text-slate-600"
+                      />
+                      <span className="text-[8px] text-slate-500 uppercase font-mono">
+                        Speak this phrase to wake Bella up automatically
+                      </span>
+                    </div>
+                  )}
 
                   <div className="space-y-1.5">
                     <label className="block text-[10px] font-mono tracking-wider text-slate-300 uppercase">
                       Active Microphone
                     </label>
                     <select
-                      value={settings.microphoneDevice}
-                      onChange={(e) => onChange({ microphoneDevice: e.target.value })}
+                      value={settings.micDeviceId}
+                      onChange={(e) => onChange({ micDeviceId: e.target.value })}
                       className="w-full bg-slate-900/90 border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-cyan-400"
                     >
                       <option value="default">System Default</option>
@@ -592,6 +610,29 @@ export function SettingsPanel({
                     />
                     <span className="text-[8px] text-slate-500 uppercase font-mono">
                       Higher = faster re-arm &amp; more matches
+                    </span>
+                  </div>
+
+                  <div className="space-y-1.5 pt-2 border-t border-white/5">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-[10px] font-mono tracking-wider text-slate-300 uppercase">
+                        Auto-Sleep Inactivity Timeout
+                      </label>
+                      <span className="text-[10px] font-mono text-cyan-300">
+                        {settings.autoSleepSeconds || 60}s
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={15}
+                      max={300}
+                      step={5}
+                      value={settings.autoSleepSeconds || 60}
+                      onChange={(e) => onChange({ autoSleepSeconds: Number(e.target.value) })}
+                      className="w-full accent-cyan-500 cursor-pointer"
+                    />
+                    <span className="text-[8px] text-slate-500 uppercase font-mono">
+                      Automatically puts Bella to sleep after non-interaction
                     </span>
                   </div>
                 </div>
