@@ -303,6 +303,7 @@ function waitForBackend(timeoutMs) {
 // Windows
 // ---------------------------------------------------------------------------
 function createSplashWindow() {
+  const iconPath = path.join(APP_ROOT, 'assets', 'icon.png');
   splashWindow = new BrowserWindow({
     width: 420,
     height: 300,
@@ -313,6 +314,7 @@ function createSplashWindow() {
     show: true,
     alwaysOnTop: true,
     skipTaskbar: true,
+    icon: fs.existsSync(iconPath) ? iconPath : undefined,
     backgroundColor: '#00000000',
     webPreferences: { contextIsolation: true, nodeIntegration: false },
   });
@@ -321,6 +323,7 @@ function createSplashWindow() {
 }
 
 function createMainWindow() {
+  const iconPath = path.join(APP_ROOT, 'assets', 'icon.png');
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -329,6 +332,7 @@ function createMainWindow() {
     show: false, // revealed on ready-to-show to avoid a white flash
     frame: false, // removes invisible OS resize handles on transparent windows
     transparent: true,
+    icon: fs.existsSync(iconPath) ? iconPath : undefined,
     backgroundColor: '#00000000',
     autoHideMenuBar: true,
     title: 'BELLA',

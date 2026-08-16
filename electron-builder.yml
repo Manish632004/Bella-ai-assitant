@@ -1,4 +1,4 @@
-﻿appId: com.bella.desktop
+appId: com.bella.desktop
 productName: BELLA
 copyright: Copyright Â© 2026 BELLA
 
@@ -25,6 +25,7 @@ extraResources:
     filter: ["**/*"]
 
 win:
+  icon: assets/icon.ico
   target:
     - target: nsis
       arch: [x64]
