@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { Memory, MemoryCategory } from "../lib/memoryTypes";
 import { 
   Brain, 
@@ -12,13 +12,15 @@ import {
   Users, 
   Flame, 
   Sparkles,
-  RefreshCw,
   GraduationCap,
   Wrench,
   BookOpen,
   Film,
   Camera,
-  Layers
+  Layers,
+  Search,
+  CheckCircle2,
+  Database
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -40,15 +42,16 @@ export function MemoryDashboard({
   themeColor
 }: MemoryDashboardProps) {
   const [activeTab, setActiveTab] = useState<string>("all");
+  const [searchQuery, setSearchQuery] = useState<string>("");
   const [newText, setNewText] = useState("");
-  const [newCategory, setNewCategory] = useState<string>("identity");
+  const [newCategory, setNewCategory] = useState<string>("preference");
   const [isAdding, setIsAdding] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   // Comprehensive Category Configuration
   const categoryConfig: Record<string, { label: string; icon: any; color: string; bg: string }> = {
     identity: { 
-      label: "Identity Core", 
+      label: "Identity", 
       icon: User, 
       color: "text-amber-400 border-amber-500/25", 
       bg: "bg-amber-500/5 hover:bg-amber-500/10" 
@@ -60,37 +63,37 @@ export function MemoryDashboard({
       bg: "bg-pink-500/5 hover:bg-pink-500/10" 
     },
     goal: { 
-      label: "Life Goals", 
+      label: "Goals", 
       icon: Target, 
       color: "text-emerald-400 border-emerald-500/25", 
       bg: "bg-emerald-500/5 hover:bg-emerald-500/10" 
     },
     project: { 
-      label: "Active Projects", 
+      label: "Projects", 
       icon: Briefcase, 
       color: "text-cyan-400 border-cyan-500/25", 
       bg: "bg-cyan-500/5 hover:bg-cyan-500/10" 
     },
     interest: { 
-      label: "Interests & Passions", 
+      label: "Interests", 
       icon: Sparkles, 
       color: "text-purple-400 border-purple-500/25", 
       bg: "bg-purple-500/5 hover:bg-purple-500/10" 
     },
     learning: { 
-      label: "Learning Path", 
+      label: "Learning", 
       icon: BookOpen, 
       color: "text-blue-400 border-blue-500/25", 
       bg: "bg-blue-500/5 hover:bg-blue-500/10" 
     },
     education: { 
-      label: "Education & Degree", 
+      label: "Education", 
       icon: GraduationCap, 
       color: "text-teal-400 border-teal-500/25", 
       bg: "bg-teal-500/5 hover:bg-teal-500/10" 
     },
     tools: { 
-      label: "Tools & Stack", 
+      label: "Tools", 
       icon: Wrench, 
       color: "text-amber-300 border-amber-400/25", 
       bg: "bg-amber-400/5 hover:bg-amber-400/10" 
@@ -108,19 +111,19 @@ export function MemoryDashboard({
       bg: "bg-red-500/5 hover:bg-red-500/10" 
     },
     behavior: { 
-      label: "Behaviors & Habits", 
+      label: "Habits", 
       icon: Brain, 
       color: "text-indigo-400 border-indigo-500/25", 
       bg: "bg-indigo-500/5 hover:bg-indigo-500/10" 
     },
     media: { 
-      label: "Media & Culture", 
+      label: "Media", 
       icon: Film, 
       color: "text-rose-400 border-rose-500/25", 
       bg: "bg-rose-500/5 hover:bg-rose-500/10" 
     },
     visual_context: {
-      label: "Visual Intelligence",
+      label: "Vision",
       icon: Camera,
       color: "text-cyan-300 border-cyan-400/25",
       bg: "bg-cyan-400/5 hover:bg-cyan-400/10"
@@ -132,30 +135,20 @@ export function MemoryDashboard({
       return categoryConfig[cat];
     }
     return {
-      label: cat ? cat.charAt(0).toUpperCase() + cat.slice(1) : "General Context",
+      label: cat ? cat.charAt(0).toUpperCase() + cat.slice(1) : "General",
       icon: Layers,
       color: "text-cyan-400 border-cyan-500/25",
       bg: "bg-cyan-500/5 hover:bg-cyan-500/10"
     };
   };
 
-  const getThemeBadgeGlow = () => {
-    switch (themeColor) {
-      case "violet": return "border-purple-500/30 text-purple-400 bg-purple-500/10";
-      case "crimson": return "border-rose-500/30 text-rose-400 bg-rose-500/10";
-      case "emerald": return "border-emerald-500/30 text-emerald-400 bg-emerald-500/10";
-      case "celestial": return "border-sky-500/30 text-sky-400 bg-sky-500/10";
-      case "gold": return "border-amber-500/30 text-amber-400 bg-amber-500/10";
-      case "rose": return "border-pink-500/30 text-pink-400 bg-pink-500/10";
-      case "charcoal":
-      default:
-        return "border-indigo-500/30 text-indigo-400 bg-indigo-500/10";
-    }
-  };
-
-  const filteredMemories = activeTab === "all" 
-    ? memories 
-    : memories.filter(m => (m.category || "").toLowerCase() === activeTab.toLowerCase());
+  const filteredMemories = useMemo(() => {
+    return memories.filter((m) => {
+      const matchCat = activeTab === "all" || (m.category || "").toLowerCase() === activeTab.toLowerCase();
+      const matchSearch = !searchQuery.trim() || m.text.toLowerCase().includes(searchQuery.toLowerCase().trim());
+      return matchCat && matchSearch;
+    });
+  }, [memories, activeTab, searchQuery]);
 
   const handleManualAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -174,92 +167,147 @@ export function MemoryDashboard({
   };
 
   const formatDate = (isoStr?: string) => {
-    if (!isoStr) return "Durable Record";
+    if (!isoStr) return "Permanent";
     try {
       const d = new Date(isoStr);
-      if (isNaN(d.getTime())) return "Durable Record";
+      if (isNaN(d.getTime())) return "Permanent";
       return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
     } catch (e) {
-      return "Durable Record";
+      return "Permanent";
     }
   };
 
   return (
     <AnimatePresence>
       {isOpen && (
-        <>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 overflow-hidden">
           {/* Backdrop Overlay */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="absolute inset-0 bg-black/60 z-40 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/75 backdrop-blur-md"
           />
 
-          {/* Slide-over Container */}
+          {/* Centered Premium Glass Modal */}
           <motion.div
-            initial={{ x: "100%" }}
-            animate={{ x: 0 }}
-            exit={{ x: "100%" }}
-            transition={{ type: "spring", damping: 25, stiffness: 200 }}
-            className="absolute inset-y-0 right-0 w-full max-w-lg bg-[#07080B]/95 border-l border-white/10 backdrop-blur-2xl z-50 flex flex-col shadow-[0_0_50px_rgba(0,0,0,0.8)]"
+            initial={{ opacity: 0, scale: 0.96, y: 12 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.96, y: 12 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            className="relative w-full max-w-4xl max-h-[85vh] rounded-2xl glass-panel border border-white/[0.1] bg-[#0E1017]/95 shadow-2xl flex flex-col overflow-hidden text-white z-10"
           >
-            {/* Header */}
-            <div className="p-6 border-b border-white/10 flex items-center justify-between">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.08] bg-white/[0.02]">
               <div className="flex items-center gap-3">
-                <div className={`p-2.5 rounded-xl border ${getThemeBadgeGlow()}`}>
-                  <Brain size={22} className="animate-pulse" />
+                <div className="p-2.5 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400">
+                  <Brain size={20} className="animate-pulse" />
                 </div>
                 <div>
-                  <h3 className="font-display font-medium text-lg tracking-tight text-white flex items-center gap-2">
-                    Bella Memory Core
-                    <Sparkles size={14} className="text-cyan-400" />
-                  </h3>
-                  <p className="text-[10px] font-mono uppercase tracking-widest text-slate-400 mt-0.5">
-                    Persistent recollect files ({memories.length})
+                  <div className="flex items-center gap-2">
+                    <h2 className="font-display font-bold text-lg tracking-tight text-white/95">
+                      Memory Core
+                    </h2>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-white/[0.06] text-slate-300 border border-white/10">
+                      {memories.length} memories
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 font-sans mt-0.5">
+                    Continuous long-term recollections and personal preferences
                   </p>
                 </div>
               </div>
-              <button
-                onClick={onClose}
-                className="p-2 rounded-xl border border-white/5 bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition cursor-pointer"
-              >
-                <X size={18} />
-              </button>
-            </div>
 
-            {/* Quick stats & action row */}
-            <div className="px-6 py-4 bg-white/5 border-b border-white/5 flex items-center justify-between gap-2.5">
-              <span className="text-[10px] text-slate-400 font-mono">
-                💡 Bella remembers these details naturally as you chat.
-              </span>
-              {!isAdding && (
+              <div className="flex items-center gap-2">
                 <button
-                  onClick={() => setIsAdding(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-cyan-500/30 bg-cyan-500/10 hover:bg-cyan-500/20 text-xs font-mono tracking-wider text-cyan-300 transition shrink-0 cursor-pointer"
+                  onClick={() => setIsAdding(!isAdding)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-sans font-medium transition cursor-pointer ${
+                    isAdding
+                      ? "bg-purple-500/20 text-purple-300 border border-purple-500/40"
+                      : "bg-white/[0.06] hover:bg-white/[0.1] text-slate-200 border border-white/10"
+                  }`}
                 >
-                  <Plus size={12} />
-                  <span>MANUAL SEED</span>
+                  <Plus size={13} />
+                  <span>{isAdding ? "Close Form" : "Add Memory"}</span>
                 </button>
-              )}
+                <button
+                  onClick={onClose}
+                  className="p-1.5 rounded-xl hover:bg-white/[0.08] text-slate-400 hover:text-white transition cursor-pointer"
+                  title="Close (Esc)"
+                >
+                  <X size={18} />
+                </button>
+              </div>
             </div>
 
-            {/* Manual entry card drawer inside dashboard */}
+            {/* Quick Filter & Search Bar */}
+            <div className="px-6 py-3 border-b border-white/[0.06] bg-black/20 flex flex-col sm:flex-row items-center gap-3 justify-between">
+              {/* Search input */}
+              <div className="relative w-full sm:w-72">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Filter memories by keyword..."
+                  className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500/50 transition font-sans"
+                />
+              </div>
+
+              {/* Dynamic Category Tabs */}
+              <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto no-scrollbar py-0.5">
+                <button
+                  onClick={() => setActiveTab("all")}
+                  className={`px-3 py-1 rounded-xl text-xs font-sans font-medium transition cursor-pointer shrink-0 ${
+                    activeTab === "all"
+                      ? "bg-white/15 text-white shadow-sm font-semibold border border-white/15"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  All ({memories.length})
+                </button>
+                {Object.keys(categoryConfig).map((cat) => {
+                  const config = getCategoryConfig(cat);
+                  const count = memories.filter(
+                    (m) => (m.category || "").toLowerCase() === cat.toLowerCase()
+                  ).length;
+                  if (count === 0 && !["identity", "preference", "goal", "project", "interest", "learning"].includes(cat)) {
+                    return null;
+                  }
+                  const active = activeTab.toLowerCase() === cat.toLowerCase();
+                  return (
+                    <button
+                      key={cat}
+                      onClick={() => setActiveTab(cat)}
+                      className={`px-2.5 py-1 rounded-xl text-xs font-sans font-medium transition cursor-pointer shrink-0 ${
+                        active
+                          ? "bg-white/15 text-white shadow-sm font-semibold border border-white/15"
+                          : "text-slate-400 hover:text-slate-200"
+                      }`}
+                    >
+                      {config.label} {count > 0 ? `(${count})` : ""}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Manual Entry Form */}
             <AnimatePresence>
               {isAdding && (
                 <motion.div
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: "auto", opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
-                  className="overflow-hidden border-b border-white/15 bg-[#0E1017]"
+                  className="overflow-hidden border-b border-white/[0.08] bg-[#141722]/80"
                 >
                   <form onSubmit={handleManualAdd} className="p-5 space-y-4">
                     <div>
-                      <label className="block text-[11px] font-mono tracking-wider text-slate-300 uppercase mb-2">
-                        Memory Archetype Category
+                      <label className="block text-xs font-medium text-slate-300 mb-2 font-sans">
+                        Category
                       </label>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                         {Object.keys(categoryConfig).map((cat) => {
                           const cfg = getCategoryConfig(cat);
                           const Icon = cfg.icon;
@@ -269,14 +317,14 @@ export function MemoryDashboard({
                               key={cat}
                               type="button"
                               onClick={() => setNewCategory(cat)}
-                              className={`flex items-center gap-2 p-1.5 rounded-lg border text-xs tracking-wide transition cursor-pointer ${
-                                active 
-                                  ? "border-cyan-400 bg-cyan-400/10 text-cyan-300"
-                                  : "border-white/5 bg-white/5 text-slate-400 hover:bg-white/10"
+                              className={`flex items-center gap-2 p-2 rounded-xl border text-xs font-sans transition cursor-pointer ${
+                                active
+                                  ? "border-purple-500 bg-purple-500/15 text-purple-200 font-semibold"
+                                  : "border-white/[0.06] bg-white/[0.02] text-slate-400 hover:bg-white/[0.05]"
                               }`}
                             >
-                              <Icon size={12} />
-                              <span className="truncate">{cfg.label.split(" ")[0]}</span>
+                              <Icon size={13} className={active ? "text-purple-400" : "text-slate-400"} />
+                              <span className="truncate">{cfg.label}</span>
                             </button>
                           );
                         })}
@@ -284,32 +332,33 @@ export function MemoryDashboard({
                     </div>
 
                     <div>
-                      <label className="block text-[11px] font-mono tracking-wider text-slate-300 uppercase mb-2">
-                        Recollection Statement (3rd Person declarative)
+                      <label className="block text-xs font-medium text-slate-300 mb-2 font-sans">
+                        Recollection Statement
                       </label>
                       <textarea
                         value={newText}
                         onChange={(e) => setNewText(e.target.value)}
-                        placeholder="e.g. The user prefers hands-on cybersecurity labs with TryHackMe and Burp Suite."
+                        placeholder="e.g. The user prefers hands-on cybersecurity labs and real-world network projects."
                         required
-                        className="w-full h-18 text-xs p-3 rounded-lg border border-white/10 bg-black/40 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500/60 resize-none font-sans"
+                        rows={3}
+                        className="w-full p-3 text-xs rounded-xl border border-white/10 bg-black/40 text-white placeholder-slate-500 focus:outline-none focus:border-purple-500/50 font-sans resize-none"
                       />
                     </div>
 
-                    <div className="flex gap-2.5 justify-end">
+                    <div className="flex items-center justify-end gap-2">
                       <button
                         type="button"
                         onClick={() => setIsAdding(false)}
-                        className="px-3.5 py-1.5 rounded-lg border border-white/5 text-xs font-mono tracking-wide text-slate-400 hover:text-white transition cursor-pointer"
+                        className="px-3 py-1.5 rounded-xl border border-white/10 text-xs text-slate-400 hover:text-white transition cursor-pointer"
                       >
                         Cancel
                       </button>
                       <button
                         type="submit"
                         disabled={submitting}
-                        className="px-4 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs uppercase font-mono tracking-widest transition disabled:opacity-50 cursor-pointer"
+                        className="px-4 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-medium text-xs transition disabled:opacity-50 cursor-pointer shadow-lg shadow-purple-600/20"
                       >
-                        {submitting ? "Saving..." : "Commit Memory"}
+                        {submitting ? "Saving..." : "Save Memory"}
                       </button>
                     </div>
                   </form>
@@ -317,115 +366,73 @@ export function MemoryDashboard({
               )}
             </AnimatePresence>
 
-            {/* TAB SELECTOR SCROLLER */}
-            <div className="px-6 py-4 flex gap-1.5 overflow-x-auto no-scrollbar border-b border-light border-white/10 shrink-0">
-              <button
-                onClick={() => setActiveTab("all")}
-                className={`px-3 py-1.5 rounded-full border text-[11px] tracking-wider uppercase transition cursor-pointer shrink-0 ${
-                  activeTab === "all"
-                    ? "border-white bg-white text-slate-950 font-bold"
-                    : "border-white/5 bg-white/5 text-slate-400 hover:border-white/15"
-                }`}
-              >
-                All ({memories.length})
-              </button>
-              {Object.keys(categoryConfig).map((cat) => {
-                const config = getCategoryConfig(cat);
-                const count = memories.filter(m => (m.category || "").toLowerCase() === cat.toLowerCase()).length;
-                if (count === 0 && !["identity", "preference", "goal", "project", "interest", "learning"].includes(cat)) {
-                  return null;
-                }
-                const active = activeTab.toLowerCase() === cat.toLowerCase();
-                return (
-                  <button
-                    key={cat}
-                    onClick={() => setActiveTab(cat)}
-                    className={`px-3 py-1.5 rounded-full border text-[11px] tracking-wider uppercase transition shrink-0 cursor-pointer ${
-                      active
-                        ? "border-white bg-white text-slate-950 font-bold"
-                        : "border-white/5 bg-white/5 text-slate-400 hover:border-white/15"
-                    }`}
-                  >
-                    {config.label.split(" ")[0]} {count > 0 ? `(${count})` : ""}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* RECOLLECTION ITEMS CARDS CONTAINER */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-3.5">
-              <AnimatePresence initial={false}>
-                {filteredMemories.length === 0 ? (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="h-full flex flex-col items-center justify-center p-8 text-center text-slate-500"
-                  >
-                    <div className="p-4 rounded-full border border-dashed border-white/10 bg-white/[0.02] mb-4">
-                      <Brain size={32} className="opacity-40" />
-                    </div>
-                    <h4 className="text-sm font-semibold tracking-wide text-slate-300">No memories recorded yet</h4>
-                    <p className="text-xs max-w-xs mt-1.5 leading-relaxed font-mono">
-                      {activeTab === "all" 
-                        ? "Start talking aloud with Bella! Her background consolidator analyzes transcript slices and builds a life context naturally."
-                        : `No persistent recollections saved in Category "${getCategoryConfig(activeTab).label}". Add one or speak with Bella.`}
-                    </p>
-                  </motion.div>
-                ) : (
-                  filteredMemories.map((m) => {
+            {/* Memory Items Grid / List */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-3">
+              {filteredMemories.length === 0 ? (
+                <div className="h-48 flex flex-col items-center justify-center text-center text-slate-500">
+                  <Brain size={32} className="opacity-30 mb-3" />
+                  <p className="text-sm font-medium text-slate-300">No memories matched</p>
+                  <p className="text-xs text-slate-500 mt-1 max-w-sm">
+                    {searchQuery ? "Try a different search term." : "Speak with Bella or add a manual memory to get started."}
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {filteredMemories.map((m) => {
                     const cfg = getCategoryConfig(m.category);
                     const Icon = cfg.icon;
 
                     return (
-                      <motion.div
+                      <div
                         key={m.id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.95 }}
-                        className={`flex items-start justify-between gap-4 p-4 rounded-xl border border-white/5 backdrop-blur-md bg-white/[0.02] ${cfg.bg} transition-colors group relative`}
+                        className={`p-4 rounded-xl border border-white/[0.06] bg-white/[0.02] ${cfg.bg} hover:border-white/[0.12] transition-all group flex flex-col justify-between`}
                       >
-                        <div className="flex gap-3.5 overflow-hidden">
-                          <div className={`p-2 rounded-lg border mt-0.5 shrink-0 bg-black/40 ${cfg.color}`}>
-                            <Icon size={14} />
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-1.5">
+                              <div className={`p-1.5 rounded-lg border bg-black/40 ${cfg.color}`}>
+                                <Icon size={12} />
+                              </div>
+                              <span className={`text-[10px] font-sans font-semibold uppercase tracking-wider ${cfg.color}`}>
+                                {cfg.label}
+                              </span>
+                            </div>
+
+                            <button
+                              onClick={() => onDeleteMemory(m.id)}
+                              className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-rose-500/20 text-slate-400 hover:text-rose-300 transition cursor-pointer"
+                              title="Delete memory"
+                            >
+                              <Trash2 size={13} />
+                            </button>
                           </div>
-                          <div className="overflow-hidden">
-                            <span className={`text-[9px] font-mono uppercase tracking-wider block ${cfg.color}`}>
-                              {cfg.label}
-                            </span>
-                            <p className="text-xs text-slate-200 mt-1 font-sans leading-relaxed break-words font-medium">
-                              {m.text}
-                            </p>
-                            <span className="text-[9px] font-mono text-slate-500 mt-2 block">
-                              Recalled: {formatDate(m.createdAt)}
-                            </span>
-                          </div>
+
+                          <p className="text-xs text-slate-200 font-sans leading-relaxed font-normal">
+                            {m.text}
+                          </p>
                         </div>
 
-                        {/* Forget / Delete trigger button */}
-                        <button
-                          onClick={() => onDeleteMemory(m.id)}
-                          className="opacity-0 group-hover:opacity-100 p-2 rounded-lg border border-red-500/25 bg-red-950/15 text-red-400 hover:bg-red-500 hover:text-white transition duration-150 absolute top-4 right-4 sm:relative sm:top-0 sm:right-0 shrink-0 cursor-pointer"
-                          title="Forget this memory"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </motion.div>
+                        <div className="mt-3 pt-2 border-t border-white/[0.04] flex items-center justify-between text-[10px] text-slate-500 font-mono">
+                          <span>{formatDate(m.createdAt)}</span>
+                          <span className="text-slate-600">Verified</span>
+                        </div>
+                      </div>
                     );
-                  })
-                )}
-              </AnimatePresence>
+                  })}
+                </div>
+              )}
             </div>
 
-            {/* Technical visual core footprint footer */}
-            <div className="p-5 border-t border-white/10 bg-black/40 flex items-center justify-between text-[9px] font-mono text-slate-600 tracking-wider">
-              <span className="flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 shadow-[0_0_5px_rgba(34,211,238,0.7)] animate-pulse" />
-                <span>MEM-SYNC STREAM ACTIVE</span>
-              </span>
-              <span>DURABLE LOCAL JSON DB SEED</span>
+            {/* Footer */}
+            <div className="px-6 py-3 border-t border-white/[0.06] bg-black/30 flex items-center justify-between text-[11px] text-slate-400">
+              <div className="flex items-center gap-1.5">
+                <CheckCircle2 size={13} className="text-emerald-400" />
+                <span>Memories automatically personalize voice conversations</span>
+              </div>
+              <span className="font-mono text-[10px] text-slate-500">Local JSON Storage</span>
             </div>
           </motion.div>
-        </>
+        </div>
       )}
     </AnimatePresence>
   );
