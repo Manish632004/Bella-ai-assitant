@@ -70,7 +70,7 @@ export const CameraVisionWidget: React.FC<CameraVisionWidgetProps> = ({
   useEffect(() => {
     if (isOpen) {
       if (managerRef.current && !managerRef.current.isStreaming()) {
-        managerRef.current.startCamera(selectedCamera, mode).then((ok) => {
+        managerRef.current.startCamera(selectedCamera, mode, videoRef.current || undefined).then((ok) => {
           setIsStreaming(ok);
           if (ok && videoRef.current) {
             managerRef.current?.attachPreviewVideo(videoRef.current);
@@ -92,7 +92,7 @@ export const CameraVisionWidget: React.FC<CameraVisionWidgetProps> = ({
       setIsStreaming(false);
     } else {
       if (!isStreaming) {
-        managerRef.current?.startCamera(selectedCamera, newMode).then((ok) => {
+        managerRef.current?.startCamera(selectedCamera, newMode, videoRef.current || undefined).then((ok) => {
           setIsStreaming(ok);
           if (ok && videoRef.current) {
             managerRef.current?.attachPreviewVideo(videoRef.current);

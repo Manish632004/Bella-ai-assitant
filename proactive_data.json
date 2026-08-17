@@ -1,6 +1,15 @@
 {
   "tasks": [
     {
+      "id": "task-zjydygh",
+      "title": "Fix audio output issue",
+      "category": "Personal",
+      "priority": "high",
+      "status": "pending",
+      "estimatedMinutes": 30,
+      "createdAt": "2026-08-17T05:16:33.856Z"
+    },
+    {
       "id": "task-qt5s7mn",
       "title": "practice Room (TryHackMe)",
       "category": "Study",
@@ -151,6 +160,13 @@
   ],
   "calendarEvents": [],
   "activities": [
+    {
+      "id": "act-tie19qq",
+      "title": "Created task \"Fix audio output issue\"",
+      "type": "tasks",
+      "description": "Priority: high, Category: Personal",
+      "timestamp": "2026-08-17T05:16:33.856Z"
+    },
     {
       "id": "act-g8z68vx",
       "title": "Created task \"practice Room (TryHackMe)\"",

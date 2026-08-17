@@ -63,7 +63,7 @@ export class CameraVisionManager {
     return this.stream !== null && this.currentMode !== "OFF";
   }
 
-  public async startCamera(deviceId?: string, mode: VisionMode = "CONVERSATION"): Promise<boolean> {
+  public async startCamera(deviceId?: string, mode: VisionMode = "CONVERSATION", previewElement?: HTMLVideoElement): Promise<boolean> {
     try {
       this.stopCamera();
 
@@ -74,8 +74,8 @@ export class CameraVisionManager {
       const constraints: MediaStreamConstraints = {
         video: {
           deviceId: this.selectedDeviceId ? { exact: this.selectedDeviceId } : undefined,
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
+          width: { ideal: 1280, min: 640 },
+          height: { ideal: 720, min: 480 },
           frameRate: { ideal: 15 }
         },
         audio: false
@@ -83,18 +83,20 @@ export class CameraVisionManager {
 
       this.stream = await navigator.mediaDevices.getUserMedia(constraints);
 
-      if (!this.videoElement) {
+      if (previewElement) {
+        this.videoElement = previewElement;
+      } else if (!this.videoElement) {
         this.videoElement = document.createElement("video");
-        this.videoElement.autoplay = true;
-        this.videoElement.playsInline = true;
-        this.videoElement.muted = true;
       }
 
+      this.videoElement.autoplay = true;
+      this.videoElement.playsInline = true;
+      this.videoElement.muted = true;
       this.videoElement.srcObject = this.stream;
-      await this.videoElement.play();
+      await this.videoElement.play().catch(() => {});
 
       this.setMode(mode);
-      if (this.onStatusChange) this.onStatusChange("Camera Connected");
+      if (this.onStatusChange) this.onStatusChange("Camera Active & Streaming");
       return true;
     } catch (err: any) {
       console.error("[CameraVision] Failed to start camera:", err);
@@ -141,30 +143,40 @@ export class CameraVisionManager {
     }
 
     if (mode === "CONVERSATION") {
-      // 0.5 FPS (1 frame every 2 seconds)
-      const intervalMs = Math.round(1000 / this.config.conversationFps);
+      // 0.8 FPS (1 frame every 1.25s) for smooth conversational responses
       this.samplingTimer = setInterval(() => {
         this.captureAndEmitFrame();
-      }, intervalMs);
+      }, 1250);
+      // Emit immediate first frame
+      this.captureAndEmitFrame();
     } else if (mode === "REAL-TIME") {
-      // 1.0 FPS (1 frame every 1 second)
-      const intervalMs = Math.round(1000 / this.config.realtimeFps);
+      // 1.5 FPS (1 frame every 660ms) for high responsiveness
       this.samplingTimer = setInterval(() => {
         this.captureAndEmitFrame();
-      }, intervalMs);
+      }, 660);
+      // Emit immediate first frame
+      this.captureAndEmitFrame();
     }
   }
 
   public captureSnapshot(): string | null {
-    return this.captureAndEmitFrame();
+    return this.captureAndEmitFrame(0.85); // High quality snapshot
   }
 
-  private captureAndEmitFrame(): string | null {
-    if (!this.videoElement || !this.stream || this.videoElement.readyState < 2) {
+  private captureAndEmitFrame(customQuality?: number): string | null {
+    const video = this.videoElement;
+    if (!video || !this.stream) {
       return null;
     }
 
     try {
+      let width = video.videoWidth;
+      let height = video.videoHeight;
+
+      if (!width || !height || width < 10 || height < 10) {
+        return null;
+      }
+
       if (!this.canvasElement) {
         this.canvasElement = document.createElement("canvas");
       }
@@ -173,11 +185,7 @@ export class CameraVisionManager {
       const ctx = canvas.getContext("2d");
       if (!ctx) return null;
 
-      const video = this.videoElement;
-      let width = video.videoWidth || 640;
-      let height = video.videoHeight || 480;
-      const maxDim = this.config.snapshotMaxDim;
-
+      const maxDim = 1024; // 1024px maximum dimension for crisp OCR and small component detection
       if (width > maxDim || height > maxDim) {
         if (width > height) {
           height = Math.round((height * maxDim) / width);
@@ -192,7 +200,8 @@ export class CameraVisionManager {
       canvas.height = height;
       ctx.drawImage(video, 0, 0, width, height);
 
-      const dataUrl = canvas.toDataURL("image/jpeg", this.config.jpegQuality);
+      const quality = customQuality || 0.70;
+      const dataUrl = canvas.toDataURL("image/jpeg", quality);
       const base64 = dataUrl.split(",")[1];
 
       if (base64 && this.onFrameCaptured) {
@@ -207,6 +216,7 @@ export class CameraVisionManager {
   }
 
   public attachPreviewVideo(targetVideo: HTMLVideoElement): void {
+    this.videoElement = targetVideo;
     if (this.stream) {
       targetVideo.srcObject = this.stream;
       targetVideo.play().catch(e => console.warn("[CameraVision] Preview play error:", e));

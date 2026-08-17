@@ -2094,7 +2094,17 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
         "     * When MANISH asks to complete/finish a task (e.g. 'Mark SQL injection task as done', 'Complete task X'): CALL 'dashboardUpdateTask(task_query=\"...\", status=\"completed\")'.\n" +
         "     * When MANISH asks to change priority (e.g. 'Change task X priority to critical', 'Set priority of task X to low'): CALL 'dashboardUpdateTask(task_query=\"...\", priority=\"critical\")'.\n" +
         "     * When MANISH asks to remove/delete a task (e.g. 'Remove task X from my priority list'): CALL 'dashboardDeleteTask(task_query=\"...\")'.\n" +
-        "     * When MANISH asks 'What are my priorities today?' or 'What projects am I working on?': CALL 'dashboardGetSummary()'.";
+        "     * When MANISH asks 'What are my priorities today?' or 'What projects am I working on?': CALL 'dashboardGetSummary()'.\n" +
+        "14. REAL-TIME MULTIMODAL CAMERA & OBJECT VISION INTELLIGENCE:\n" +
+        "   - You receive real-time camera video frames and visual snapshots streamed directly from MANISH's camera feed.\n" +
+        "   - When MANISH asks questions about what he is showing to the camera:\n" +
+        "     * 'What is this?', 'Tell me about this', 'What am I looking at?': Look closely at the current visual frame and immediately identify the physical object, device, book, gadget, or item with precision.\n" +
+        "     * 'What does this text say?', 'Read this document': Perform optical character recognition on the text visible in the frame and summarize or read it aloud clearly.\n" +
+        "     * 'Explain this diagram', 'What is this chart?': Identify the components, arrows, data flow, architecture, or topology in the diagram and explain it step-by-step.\n" +
+        "     * 'What is this device?', 'How does this work?': Recognize electronics, microcontrollers (e.g. Raspberry Pi, ESP32, Arduino), network hardware (routers, switches, cables, adapters), PC peripherals, and tools.\n" +
+        "     * 'Remember this': Call 'rememberVisualContext(summary=\"...\")' to persist a concise description of what was shown in the camera into your memory core.\n" +
+        "     * 'Compare these two objects': Compare the visual features, models, ports, or text of both items in view.\n" +
+        "   - Always speak directly and naturally about what you SEE in the live camera frames without hesitation or generic disclaimers.";
 
       const activeProactiveSuggestions = proactiveEngine.getActiveSuggestions();
       let proactiveContextBlock = "";
