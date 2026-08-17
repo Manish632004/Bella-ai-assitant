@@ -304,6 +304,30 @@ export default function App() {
     ) {
       setIsMiniMode(false);
     }
+
+    // Direct Voice Triggers for Continuous Camera Vision
+    if (
+      lower.includes("open camera") ||
+      lower.includes("turn on camera") ||
+      lower.includes("start camera") ||
+      lower.includes("use camera") ||
+      lower.includes("enable camera") ||
+      lower.includes("look at this") ||
+      lower.includes("look through camera") ||
+      lower.includes("can you see this") ||
+      lower.includes("see what i'm showing") ||
+      lower.includes("see what im showing")
+    ) {
+      setShowCameraVision(true);
+    } else if (
+      lower.includes("turn off camera") ||
+      lower.includes("stop camera") ||
+      lower.includes("close camera") ||
+      lower.includes("disable camera") ||
+      lower.includes("stop using camera")
+    ) {
+      setShowCameraVision(false);
+    }
   }, [userCaption]);
 
   const detectEmotionFromText = (text: string): BellaEmotion => {
@@ -1531,6 +1555,7 @@ export default function App() {
       {/* Floating Camera Vision HUD Widget */}
       <CameraVisionWidget
         isOpen={showCameraVision}
+        isMiniMode={isMiniMode}
         onClose={() => setShowCameraVision(false)}
         onFrameCaptured={(base64) => {
           if (sessionRef.current && state !== "disconnected") {

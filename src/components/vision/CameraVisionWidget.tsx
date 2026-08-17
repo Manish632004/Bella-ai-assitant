@@ -25,6 +25,7 @@ interface CameraVisionWidgetProps {
   onFrameCaptured?: (base64Jpeg: string) => void;
   onRememberVisual?: (summary: string) => void;
   themeColor?: string;
+  isMiniMode?: boolean;
 }
 
 export const CameraVisionWidget: React.FC<CameraVisionWidgetProps> = ({
@@ -32,7 +33,8 @@ export const CameraVisionWidget: React.FC<CameraVisionWidgetProps> = ({
   onClose,
   onFrameCaptured,
   onRememberVisual,
-  themeColor = "cyan"
+  themeColor = "cyan",
+  isMiniMode = false
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const managerRef = useRef<CameraVisionManager | null>(null);
@@ -124,6 +126,18 @@ export const CameraVisionWidget: React.FC<CameraVisionWidgetProps> = ({
   };
 
   if (!isOpen) return null;
+
+  if (isMiniMode) {
+    return (
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted
+        style={{ display: "none" }}
+      />
+    );
+  }
 
   return (
     <div

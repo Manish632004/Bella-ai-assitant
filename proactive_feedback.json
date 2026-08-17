@@ -175,13 +175,21 @@
       "type": "calendar_suggestion",
       "action": "dismissed",
       "timestamp": "2026-08-17T05:08:03.978Z"
+    },
+    {
+      "id": "6f15c0qk2",
+      "suggestionId": "sug-daily-plan-2026-08-17",
+      "category": "calendar",
+      "type": "calendar_suggestion",
+      "action": "dismissed",
+      "timestamp": "2026-08-17T05:21:35.757Z"
     }
   ],
   "weights": {
     "tasks": 0.44999999999999984,
     "projects": 0.7499999999999999,
     "learning": 0.5999999999999999,
-    "calendar": 0.8999999999999999,
+    "calendar": 0.7499999999999999,
     "coding": 1,
     "cybersecurity": 1.1,
     "files": 0.8,
@@ -194,6 +202,6 @@
     "tasks": 5,
     "learning": 4,
     "projects": 3,
-    "calendar": 2
+    "calendar": 3
   }
 }
