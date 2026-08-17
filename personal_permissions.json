@@ -1,0 +1,12 @@
+{
+  "screen": false,
+  "microphone": false,
+  "camera": false,
+  "browser": false,
+  "files": false,
+  "calendar": false,
+  "activeApp": true,
+  "media": true,
+  "learning": true,
+  "projects": true
+}

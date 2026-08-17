@@ -25,6 +25,18 @@ import {
 } from "./server_paths";
 import { getProactiveEngine } from "./proactive/ProactiveEngine";
 import { computerActionEngine, AppRegistry } from "./computer";
+import {
+  personalIntelligence,
+  contextPermissionManager,
+  contextEngine as piContextEngine,
+  curiosityEngine,
+  recommendationEngine,
+  memoryManager as piMemoryManager,
+  interactionTiming,
+  feedbackEngine,
+  ExplainabilityEngine,
+  PrivacyController
+} from "./personal-intelligence";
 
 dotenv.config();
 
@@ -1768,6 +1780,113 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
     }
   });
   
+  // ---------------------------------------------------------------------------
+  // Personal Intelligence & Context-Aware Companion Endpoints
+  // ---------------------------------------------------------------------------
+  personalIntelligence.init().catch(err => console.error("[Server] Personal Intelligence init error:", err));
+
+  // Context & Privacy Permissions API
+  app.get("/api/intelligence/permissions", (_req, res) => {
+    res.json(contextPermissionManager.getPermissions());
+  });
+
+  app.post("/api/intelligence/permissions", express.json(), async (req, res) => {
+    try {
+      const updated = await contextPermissionManager.setAll(req.body);
+      res.json(updated);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Current Permitted Context Snapshot
+  app.get("/api/intelligence/context", (_req, res) => {
+    res.json(piContextEngine.getSnapshot());
+  });
+
+  // Curiosity Questions Evaluation
+  app.get("/api/intelligence/curiosity", async (_req, res) => {
+    try {
+      const context = piContextEngine.getSnapshot();
+      const question = await curiosityEngine.evaluateBestQuestion(context, 0.50);
+      res.json({ question });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Personalized Recommendations
+  app.get("/api/intelligence/recommendations", async (_req, res) => {
+    try {
+      const context = piContextEngine.getSnapshot();
+      const recs = await recommendationEngine.generateRecommendations(context);
+      res.json({ recommendations: recs });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Transparent Explainability ("Why did you ask this?")
+  app.post("/api/intelligence/explain", express.json(), (req, res) => {
+    try {
+      const explanation = ExplainabilityEngine.explainAction(req.body);
+      res.json({ explanation });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // User Feedback (Accepted, Dismissed, Snoozed, Never Ask Again)
+  app.post("/api/intelligence/feedback", express.json(), async (req, res) => {
+    try {
+      const record = await feedbackEngine.recordFeedback(req.body);
+      res.json({ ok: true, record });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Personal Memories with Confidence & Confirmation
+  app.get("/api/intelligence/memories", async (req, res) => {
+    try {
+      const cat = req.query.category as any;
+      const mems = await piMemoryManager.getMemories(cat);
+      res.json({ memories: mems });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/intelligence/memories/confirm", express.json(), async (req, res) => {
+    try {
+      const { memoryId } = req.body;
+      if (!memoryId) return res.status(400).json({ error: "Missing memoryId" });
+      const confirmed = await piMemoryManager.confirmMemory(memoryId);
+      res.json({ memory: confirmed });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.delete("/api/intelligence/memories/:id", async (req, res) => {
+    try {
+      const deleted = await piMemoryManager.deleteMemory(req.params.id);
+      res.json({ success: deleted });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Total Privacy Wipe
+  app.post("/api/intelligence/wipe", async (_req, res) => {
+    try {
+      const result = await PrivacyController.wipeAllPersonalData();
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+  
   // Custom server running with http.createServer so we can upgrade for WebSocket on port 3000
   const server = http.createServer(app);
   
@@ -2132,6 +2251,52 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
                   name: "stopScreenShare",
                   description: "Stop ongoing screen sharing.",
                   parameters: { type: Type.OBJECT, properties: {} }
+                },
+                // ======== PERSONAL INTELLIGENCE & CONTEXT COMPANION TOOLS ========
+                {
+                  name: "explainProactiveReasoning",
+                  description: "Explain transparently to MANISH why you asked a question, made a recommendation, or initiated a topic.",
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      topic: { type: Type.STRING, description: "The topic or action being explained." },
+                      explanation: { type: Type.STRING, description: "Clear explanation of the contextual trigger." }
+                    },
+                    required: ["explanation"]
+                  }
+                },
+                {
+                  name: "confirmPersonalMemory",
+                  description: "Ask MANISH to confirm saving an important preference, goal, habit, or workflow into memory.",
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      category: { type: Type.STRING, description: "Memory category.", enum: ["preference", "interest", "goal", "habit", "workflow"] },
+                      text: { type: Type.STRING, description: "The preference statement." }
+                    },
+                    required: ["category", "text"]
+                  }
+                },
+                {
+                  name: "requestPersonalRecommendation",
+                  description: "Generate an uncertainty-aware recommendation for anime, media, tools, study topics, or project steps based on MANISH's preferences.",
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      type: { type: Type.STRING, description: "Type: 'anime', 'media', 'tool', 'learning_resource', 'project_step'." }
+                    }
+                  }
+                },
+                {
+                  name: "dismissProactiveTopic",
+                  description: "Dismiss or mute a proactive topic if MANISH indicates he is not interested or asks not to talk about it.",
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      topicTag: { type: Type.STRING, description: "The topic tag to mute." }
+                    },
+                    required: ["topicTag"]
+                  }
                 },
 
                 // ======== PERSONAL AI DASHBOARD MANAGEMENT TOOLS ========
@@ -2857,6 +3022,88 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
                       });
                     } catch (err: any) {
                       console.error("stopScreenShare error:", err);
+                    }
+                  })();
+                } else if (fc.name === "explainProactiveReasoning") {
+                  (async () => {
+                    try {
+                      const args = (fc.args || {}) as any;
+                      const explanation = ExplainabilityEngine.explainAction({
+                        type: "question",
+                        contextSnippet: args.topic,
+                        explanation: args.explanation
+                      });
+                      session.sendToolResponse({
+                        functionResponses: [{
+                          name: fc.name,
+                          response: { output: { explanation } },
+                          id: fc.id
+                        }]
+                      });
+                    } catch (err: any) {
+                      console.error("explainProactiveReasoning error:", err);
+                    }
+                  })();
+                } else if (fc.name === "confirmPersonalMemory") {
+                  (async () => {
+                    try {
+                      const args = (fc.args || {}) as any;
+                      const memory = await piMemoryManager.addMemory({
+                        category: args.category || "preference",
+                        text: args.text,
+                        confirmedByUser: true
+                      });
+                      clientWs.send(JSON.stringify({ type: "memory_sync" }));
+                      session.sendToolResponse({
+                        functionResponses: [{
+                          name: fc.name,
+                          response: { output: { result: `Remembered preference with confirmed status: "${memory.text}"`, memory } },
+                          id: fc.id
+                        }]
+                      });
+                    } catch (err: any) {
+                      console.error("confirmPersonalMemory error:", err);
+                    }
+                  })();
+                } else if (fc.name === "requestPersonalRecommendation") {
+                  (async () => {
+                    try {
+                      const context = piContextEngine.getSnapshot();
+                      const recs = await recommendationEngine.generateRecommendations(context, 2);
+                      const top = recs[0];
+                      const result = top
+                        ? { title: top.title, reasoning: top.reasoning, description: top.description, disclaimer: top.uncertaintyDisclaimer }
+                        : { result: "No specific match found right now, but exploring your interests!" };
+                      session.sendToolResponse({
+                        functionResponses: [{
+                          name: fc.name,
+                          response: { output: result },
+                          id: fc.id
+                        }]
+                      });
+                    } catch (err: any) {
+                      console.error("requestPersonalRecommendation error:", err);
+                    }
+                  })();
+                } else if (fc.name === "dismissProactiveTopic") {
+                  (async () => {
+                    try {
+                      const args = (fc.args || {}) as any;
+                      await feedbackEngine.recordFeedback({
+                        actionId: `act_${Date.now()}`,
+                        actionType: "question",
+                        topicTag: args.topicTag,
+                        feedback: "never_ask_again"
+                      });
+                      session.sendToolResponse({
+                        functionResponses: [{
+                          name: fc.name,
+                          response: { output: { result: `Got it! I won't bring up ${args.topicTag} again.` } },
+                          id: fc.id
+                        }]
+                      });
+                    } catch (err: any) {
+                      console.error("dismissProactiveTopic error:", err);
                     }
                   })();
                 } else if (fc.name === "executeComputerAction") {
