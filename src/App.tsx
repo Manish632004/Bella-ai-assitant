@@ -426,6 +426,11 @@ export default function App() {
 
     if (state === "disconnected") return;
 
+    // While user has Camera Vision open or is sharing Screen, DO NOT auto-sleep!
+    if (showCameraVision || isScreenSharing) {
+      return;
+    }
+
     inactivityTimerRef.current = setTimeout(() => {
       console.log(`[Auto-Sleep] ${autoSleepSeconds}s of non-interaction elapsed. Transitioning Bella to auto-sleep standby (listening for wake word)...`);
       setSleepReason("auto");
@@ -433,9 +438,20 @@ export default function App() {
         sessionRef.current.disconnect();
       }
     }, autoSleepSeconds * 1000);
-  }, [state, autoSleepSeconds]);
+  }, [state, autoSleepSeconds, showCameraVision, isScreenSharing]);
 
-  // Maintain auto-sleep timer whenever connection state changes
+  // Automatically connect / wake Bella when Camera Vision is activated
+  useEffect(() => {
+    if (showCameraVision) {
+      if (state === "disconnected") {
+        console.log("[Camera Vision] Camera activated while Bella is disconnected. Auto-activating Bella session...");
+        setSleepReason("none");
+        sessionRef.current?.connect();
+      }
+    }
+  }, [showCameraVision, state]);
+
+  // Maintain auto-sleep timer whenever connection state or visual streaming changes
   useEffect(() => {
     if (state !== "disconnected") {
       resetInactivityTimer();
@@ -451,7 +467,7 @@ export default function App() {
         inactivityTimerRef.current = null;
       }
     };
-  }, [state, resetInactivityTimer]);
+  }, [state, showCameraVision, isScreenSharing, resetInactivityTimer]);
 
   // Initialize wake detector once on mount.
   useEffect(() => {

@@ -53,7 +53,11 @@ export const CameraVisionWidget: React.FC<CameraVisionWidgetProps> = ({
       onFrameCaptured: (base64) => {
         if (onFrameCaptured) onFrameCaptured(base64);
       },
-      onModeChange: (m) => setMode(m),
+      onModeChange: (m) => {
+        if (m !== "OFF") {
+          setMode(m);
+        }
+      },
       onStatusChange: (s) => setStatusText(s)
     });
     managerRef.current = manager;
@@ -71,8 +75,11 @@ export const CameraVisionWidget: React.FC<CameraVisionWidgetProps> = ({
   // Handle open/close streaming
   useEffect(() => {
     if (isOpen) {
-      if (managerRef.current && !managerRef.current.isStreaming()) {
-        managerRef.current.startCamera(selectedCamera, mode, videoRef.current || undefined).then((ok) => {
+      const activeMode = mode === "OFF" ? "CONVERSATION" : mode;
+      if (mode === "OFF") setMode("CONVERSATION");
+
+      if (managerRef.current) {
+        managerRef.current.startCamera(selectedCamera, activeMode, videoRef.current || undefined).then((ok) => {
           setIsStreaming(ok);
           if (ok && videoRef.current) {
             managerRef.current?.attachPreviewVideo(videoRef.current);
@@ -85,24 +92,23 @@ export const CameraVisionWidget: React.FC<CameraVisionWidgetProps> = ({
         setIsStreaming(false);
       }
     }
-  }, [isOpen, selectedCamera, mode]);
+  }, [isOpen, selectedCamera]);
 
   const handleModeChange = (newMode: VisionMode) => {
-    setMode(newMode);
     if (newMode === "OFF") {
-      managerRef.current?.stopCamera();
-      setIsStreaming(false);
+      onClose();
+      return;
+    }
+    setMode(newMode);
+    if (!isStreaming) {
+      managerRef.current?.startCamera(selectedCamera, newMode, videoRef.current || undefined).then((ok) => {
+        setIsStreaming(ok);
+        if (ok && videoRef.current) {
+          managerRef.current?.attachPreviewVideo(videoRef.current);
+        }
+      });
     } else {
-      if (!isStreaming) {
-        managerRef.current?.startCamera(selectedCamera, newMode, videoRef.current || undefined).then((ok) => {
-          setIsStreaming(ok);
-          if (ok && videoRef.current) {
-            managerRef.current?.attachPreviewVideo(videoRef.current);
-          }
-        });
-      } else {
-        managerRef.current?.setMode(newMode);
-      }
+      managerRef.current?.setMode(newMode);
     }
   };
 
