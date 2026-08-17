@@ -89,6 +89,8 @@ export class BellaAudioSession {
   private onDashboardSync?: () => void;
   private onStartScreenShare?: () => void;
   private onStopScreenShare?: () => void;
+  private onMiniModeChange?: (enabled: boolean) => void;
+  private onCameraModeChange?: (mode: string) => void;
   
   private currentState: LiveState = "disconnected";
   private isActivated = false;
@@ -107,10 +109,11 @@ export class BellaAudioSession {
     onStartScreenShare?: () => void;
     onStopScreenShare?: () => void;
     onMiniModeChange?: (enabled: boolean) => void;
+    onCameraModeChange?: (mode: string) => void;
     onProactiveInit?: (settings: any, suggestions: any[]) => void;
     onProactiveSuggestion?: (suggestion: any) => void;
-  }) {
-    this.sessionId = `bella_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+  }, sessionId?: string) {
+    this.sessionId = sessionId || `bella_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     this.onStateChange = handlers.onStateChange;
     this.onTranscription = handlers.onTranscription;
     this.onToolCall = handlers.onToolCall;
@@ -120,10 +123,10 @@ export class BellaAudioSession {
     this.onStartScreenShare = handlers.onStartScreenShare;
     this.onStopScreenShare = handlers.onStopScreenShare;
     this.onMiniModeChange = handlers.onMiniModeChange;
+    this.onCameraModeChange = handlers.onCameraModeChange;
     this.onProactiveInit = handlers.onProactiveInit;
     this.onProactiveSuggestion = handlers.onProactiveSuggestion;
   }
-  private onMiniModeChange?: (enabled: boolean) => void;
 
   private setState(state: LiveState) {
     this.currentState = state;
@@ -292,6 +295,10 @@ export class BellaAudioSession {
 
           if (data.type === "mini_mode" && this.onMiniModeChange) {
             this.onMiniModeChange(Boolean(data.enabled));
+          }
+
+          if (data.type === "camera_mode" && this.onCameraModeChange) {
+            this.onCameraModeChange(data.mode);
           }
 
           // Handle audio payload (24kHzPCM model response)

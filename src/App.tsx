@@ -27,6 +27,7 @@ import {
   Settings as SettingsIcon,
   LayoutDashboard,
   Search,
+  Camera,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { Memory, MemoryCategory } from "./lib/memoryTypes";
@@ -38,10 +39,12 @@ import { ProactiveSuggestionCard } from "./components/ProactiveSuggestionCard";
 import { ProactiveSettings, ProactiveSuggestion } from "../proactive/types";
 import { PersonalAIDashboard } from "./components/dashboard/PersonalAIDashboard";
 import { CommandPalette } from "./components/dashboard/CommandPalette";
+import { CameraVisionWidget } from "./components/vision/CameraVisionWidget";
 
 export default function App() {
   const [state, setState] = useState<LiveState>("disconnected");
   const [showCommandPalette, setShowCommandPalette] = useState<boolean>(false);
+  const [showCameraVision, setShowCameraVision] = useState<boolean>(false);
 
   // Real-time Screen Sharing states
   const [isScreenSharing, setIsScreenSharing] = useState<boolean>(false);
@@ -721,6 +724,14 @@ export default function App() {
         console.log("[App] Mini mode transition triggered:", enabled);
         setIsMiniMode(enabled);
       },
+      onCameraModeChange: (cameraMode) => {
+        console.log("[App] Camera mode transition triggered:", cameraMode);
+        if (cameraMode === "OFF") {
+          setShowCameraVision(false);
+        } else {
+          setShowCameraVision(true);
+        }
+      },
       onProactiveInit: (pSettings, pSuggestions) => {
         if (pSettings) setProactiveSettings(pSettings);
         if (Array.isArray(pSuggestions)) {
@@ -860,6 +871,9 @@ export default function App() {
         break;
       case "toggle_mini_mode":
         setIsMiniMode((prev) => !prev);
+        break;
+      case "toggle_camera_vision":
+        setShowCameraVision((prev) => !prev);
         break;
       case "toggle_screen_share":
         if (isScreenSharing) stopScreenSharing();
@@ -1059,6 +1073,20 @@ export default function App() {
                 </kbd>
               </button>
 
+              {/* Real-time Camera Vision Button */}
+              <button
+                onClick={() => setShowCameraVision(!showCameraVision)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-sans transition-all duration-200 cursor-pointer ${
+                  showCameraVision
+                    ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.25)] font-medium"
+                    : "glass-pill text-slate-300 hover:text-white"
+                }`}
+                title="Camera Vision & Object Intelligence"
+              >
+                <Camera size={13} className={showCameraVision ? "animate-pulse text-cyan-400" : "text-slate-400"} />
+                <span className="hidden sm:inline">Camera</span>
+              </button>
+
               {/* Real-time Screen Sharing Button */}
               <button 
                 onClick={isScreenSharing ? stopScreenSharing : startScreenSharing}
@@ -1070,7 +1098,7 @@ export default function App() {
                 title="Share Screen with Bella"
               >
                 <Monitor size={13} className={isScreenSharing && !isScreenSharingPaused ? "animate-pulse text-emerald-400" : "text-slate-400"} />
-                <span className="hidden sm:inline">{isScreenSharing ? "Sharing" : "Vision"}</span>
+                <span className="hidden sm:inline">{isScreenSharing ? "Sharing" : "Screen"}</span>
               </button>
 
               {/* Float / Mini Mode Button */}
@@ -1498,6 +1526,21 @@ export default function App() {
         isOpen={showCommandPalette}
         onClose={() => setShowCommandPalette(false)}
         onSelectAction={handleCommandPaletteAction}
+      />
+
+      {/* Floating Camera Vision HUD Widget */}
+      <CameraVisionWidget
+        isOpen={showCameraVision}
+        onClose={() => setShowCameraVision(false)}
+        onFrameCaptured={(base64) => {
+          if (sessionRef.current && state !== "disconnected") {
+            sessionRef.current.sendVideoFrame(base64);
+          }
+        }}
+        onRememberVisual={(summary) => {
+          handleAddManualMemory("preference", summary);
+        }}
+        themeColor={themeColor}
       />
     </div>
   );

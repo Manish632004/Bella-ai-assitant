@@ -42,6 +42,7 @@ const DEFAULT_COMMANDS: SearchItem[] = [
   { id: "cmd-note", title: "Capture Quick Note", subtitle: "Save insight directly to memory", category: "Workspace & Actions", actionType: "new_note" },
   { id: "cmd-proj", title: "Open Active Projects", subtitle: "View architecture milestones and gap analysis", category: "Workspace & Actions", actionType: "open_projects" },
   { id: "cmd-cyber", title: "Cybersecurity & Learning Tracks", subtitle: "Web pentesting labs and prerequisite paths", category: "Learning & Security", actionType: "open_learning" },
+  { id: "cmd-camera", title: "Toggle Real-Time Camera Vision", subtitle: "Allow Bella to see objects, documents, and diagrams via camera", category: "System Controls", actionType: "toggle_camera_vision" },
   { id: "cmd-screen", title: "Toggle Multimodal Screen Vision", subtitle: "Allow Bella to see your active screen", category: "System Controls", actionType: "toggle_screen_share" },
   { id: "cmd-float", title: "Toggle Floating Companion (PiP)", subtitle: "Switch between Full Stage and Floating Capsule", category: "System Controls", actionType: "toggle_mini_mode" },
   { id: "cmd-settings", title: "Open Companion Settings", subtitle: "Privacy permissions, quiet hours, and voice style", category: "System Controls", actionType: "open_settings" },

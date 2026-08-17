@@ -2352,6 +2352,41 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
                     required: ["query"]
                   }
                 },
+                {
+                  name: "setCameraVisionMode",
+                  description: "Control user's camera vision mode: 'OFF', 'SNAPSHOT', 'CONVERSATION', or 'REAL-TIME'. Use when user asks to turn on/off camera, inspect an object, or enter continuous vision mode.",
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      mode: { type: Type.STRING, description: "Vision mode: 'OFF', 'SNAPSHOT', 'CONVERSATION', 'REAL-TIME'.", enum: ["OFF", "SNAPSHOT", "CONVERSATION", "REAL-TIME"] }
+                    },
+                    required: ["mode"]
+                  }
+                },
+                {
+                  name: "rememberVisualContext",
+                  description: "Store a structured textual summary of what the user showed to the camera into conversational visual memory without saving raw video files. Use when user says 'Remember this' or asks you to remember an object/document.",
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      summary: { type: Type.STRING, description: "Concise summary of the visual subject (e.g. 'User is assembling a Raspberry Pi 4 network bridge with dual NICs')." },
+                      subject: { type: Type.STRING, description: "Subject category (e.g. 'device', 'diagram', 'document', 'cybersecurity', 'code_error')." }
+                    },
+                    required: ["summary"]
+                  }
+                },
+                {
+                  name: "analyzeVisualDiagram",
+                  description: "Focus visual analysis on explaining diagrams, architecture charts, network topologies, or code error screenshots.",
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      diagramType: { type: Type.STRING, description: "Type: 'network_topology', 'architecture', 'flowchart', 'code_error', 'hardware_schematic'." },
+                      question: { type: Type.STRING, description: "User's specific inquiry about the diagram." }
+                    },
+                    required: ["diagramType"]
+                  }
+                },
 
                 // ======== PERSONAL AI DASHBOARD MANAGEMENT TOOLS ========
                 {
@@ -3195,6 +3230,69 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
                       });
                     } catch (err: any) {
                       console.error("queryTemporalMemory error:", err);
+                    }
+                  })();
+                } else if (fc.name === "setCameraVisionMode") {
+                  (async () => {
+                    try {
+                      const args = (fc.args || {}) as any;
+                      const mode = args.mode || "CONVERSATION";
+                      // Inform frontend client to change camera state
+                      clientWs.send(JSON.stringify({ type: "camera_mode", mode }));
+                      session.sendToolResponse({
+                        functionResponses: [{
+                          name: fc.name,
+                          response: { output: { result: `Camera vision mode transitioned to ${mode}.` } },
+                          id: fc.id
+                        }]
+                      });
+                    } catch (err: any) {
+                      console.error("setCameraVisionMode error:", err);
+                    }
+                  })();
+                } else if (fc.name === "rememberVisualContext") {
+                  (async () => {
+                    try {
+                      const args = (fc.args || {}) as any;
+                      const summary = args.summary;
+                      if (summary) {
+                        const mList = await loadMemories();
+                        const timestamp = new Date().toISOString();
+                        const newMemory: Memory = {
+                          id: Math.random().toString(36).substring(2, 11),
+                          category: "preference",
+                          text: `[Visual Memory]: ${summary}`,
+                          createdAt: timestamp,
+                          updatedAt: timestamp
+                        };
+                        mList.push(newMemory);
+                        await saveMemories(mList);
+                        clientWs.send(JSON.stringify({ type: "memory_sync", memories: mList }));
+                      }
+                      session.sendToolResponse({
+                        functionResponses: [{
+                          name: fc.name,
+                          response: { output: { result: "Visual observation permanently remembered in connection memory." } },
+                          id: fc.id
+                        }]
+                      });
+                    } catch (err: any) {
+                      console.error("rememberVisualContext error:", err);
+                    }
+                  })();
+                } else if (fc.name === "analyzeVisualDiagram") {
+                  (async () => {
+                    try {
+                      const args = (fc.args || {}) as any;
+                      session.sendToolResponse({
+                        functionResponses: [{
+                          name: fc.name,
+                          response: { output: { result: `Actively inspecting ${args.diagramType} through high-resolution camera feed.` } },
+                          id: fc.id
+                        }]
+                      });
+                    } catch (err: any) {
+                      console.error("analyzeVisualDiagram error:", err);
                     }
                   })();
                 } else if (fc.name === "executeComputerAction") {
