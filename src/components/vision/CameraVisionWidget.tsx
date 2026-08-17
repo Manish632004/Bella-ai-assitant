@@ -133,99 +133,99 @@ export const CameraVisionWidget: React.FC<CameraVisionWidgetProps> = ({
 
   if (!isOpen) return null;
 
-  if (isMiniMode) {
-    return (
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        muted
-        style={{ display: "none" }}
-      />
-    );
-  }
-
   return (
-    <div
-      className={`fixed bottom-24 right-6 z-50 transition-all duration-300 select-none ${
-        isMinimized ? "w-72" : "w-88 sm:w-96"
-      }`}
-    >
-      <div className="rounded-2xl glass-panel shadow-2xl border border-white/[0.1] overflow-hidden backdrop-blur-2xl bg-[#0E1017]/85 text-white">
-        {/* Top Header Bar */}
-        <div className="flex items-center justify-between px-3.5 py-2.5 bg-white/[0.03] border-b border-white/[0.06]">
-          <div className="flex items-center gap-2">
-            <div className="relative flex h-2.5 w-2.5">
-              <span
-                className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
-                  isStreaming ? "bg-emerald-400" : "bg-slate-500"
-                }`}
-              />
-              <span
-                className={`relative inline-flex rounded-full h-2.5 w-2.5 ${
-                  isStreaming ? "bg-emerald-400" : "bg-slate-500"
-                }`}
-              />
+    <>
+      {/* Offscreen / Mini Mode Permanent Video Anchor */}
+      {isMiniMode && (
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          style={{ display: "none" }}
+        />
+      )}
+
+      {/* Main Floating Glass HUD Widget (only rendered when NOT in mini mode) */}
+      {!isMiniMode && (
+        <div
+          className={`fixed bottom-24 right-6 z-50 transition-all duration-300 select-none ${
+            isMinimized ? "w-72" : "w-88 sm:w-96"
+          }`}
+        >
+          <div className="rounded-2xl glass-panel shadow-2xl border border-white/[0.1] overflow-hidden backdrop-blur-2xl bg-[#0E1017]/85 text-white">
+            {/* Top Header Bar */}
+            <div className="flex items-center justify-between px-3.5 py-2.5 bg-white/[0.03] border-b border-white/[0.06]">
+              <div className="flex items-center gap-2">
+                <div className="relative flex h-2.5 w-2.5">
+                  <span
+                    className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                      isStreaming ? "bg-emerald-400" : "bg-slate-500"
+                    }`}
+                  />
+                  <span
+                    className={`relative inline-flex rounded-full h-2.5 w-2.5 ${
+                      isStreaming ? "bg-emerald-400" : "bg-slate-500"
+                    }`}
+                  />
+                </div>
+                <span className="text-xs font-semibold tracking-wider font-display uppercase text-white/90">
+                  Camera Vision
+                </span>
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-300 border border-cyan-500/25">
+                  {mode}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setIsMinimized(!isMinimized)}
+                  className="p-1 rounded-lg hover:bg-white/[0.08] text-slate-400 hover:text-white transition cursor-pointer"
+                  title={isMinimized ? "Expand Preview" : "Minimize"}
+                >
+                  {isMinimized ? <Maximize2 size={13} /> : <Minimize2 size={13} />}
+                </button>
+                <button
+                  onClick={onClose}
+                  className="p-1 rounded-lg hover:bg-rose-500/20 text-slate-400 hover:text-rose-300 transition cursor-pointer"
+                  title="Close Camera"
+                >
+                  <X size={14} />
+                </button>
+              </div>
             </div>
-            <span className="text-xs font-semibold tracking-wider font-display uppercase text-white/90">
-              Camera Vision
-            </span>
-            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/[0.06] text-slate-300">
-              {mode}
-            </span>
-          </div>
 
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => setIsMinimized(!isMinimized)}
-              className="p-1 rounded-lg hover:bg-white/[0.08] text-slate-400 hover:text-white transition"
-              title={isMinimized ? "Expand Preview" : "Minimize"}
-            >
-              {isMinimized ? <Maximize2 size={13} /> : <Minimize2 size={13} />}
-            </button>
-            <button
-              onClick={onClose}
-              className="p-1 rounded-lg hover:bg-rose-500/20 text-slate-400 hover:text-rose-300 transition"
-              title="Close Camera"
-            >
-              <X size={14} />
-            </button>
-          </div>
-        </div>
+            {/* Video Preview Viewport */}
+            <div className={`relative bg-black/60 aspect-video flex items-center justify-center overflow-hidden ${isMinimized ? "hidden" : "block"}`}>
+              <video
+                ref={!isMiniMode ? videoRef : undefined}
+                autoPlay
+                playsInline
+                muted
+                className={`w-full h-full object-cover transition-opacity duration-300 ${
+                  isStreaming ? "opacity-100" : "opacity-0"
+                }`}
+              />
 
-        {/* Video Preview Viewport */}
-        {!isMinimized && (
-          <div className="relative bg-black/60 aspect-video flex items-center justify-center overflow-hidden">
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              className={`w-full h-full object-cover transition-opacity duration-300 ${
-                isStreaming ? "opacity-100" : "opacity-0"
-              }`}
-            />
+              {/* Shutter flash animation */}
+              {lastSnapshotTaken && (
+                <div className="absolute inset-0 bg-white/40 animate-out fade-out duration-300 pointer-events-none" />
+              )}
 
-            {/* Shutter flash animation */}
-            {lastSnapshotTaken && (
-              <div className="absolute inset-0 bg-white/40 animate-out fade-out duration-300 pointer-events-none" />
-            )}
+              {!isStreaming && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-slate-400">
+                  <CameraOff size={28} className="opacity-50" />
+                  <span className="text-xs font-sans">Camera Offline</span>
+                </div>
+              )}
 
-            {!isStreaming && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-slate-400">
-                <CameraOff size={28} className="opacity-50" />
-                <span className="text-xs font-sans">Camera Offline</span>
-              </div>
-            )}
-
-            {/* Target Reticle Overlay */}
-            {isStreaming && (
-              <div className="absolute inset-4 pointer-events-none border border-white/20 rounded-xl flex items-center justify-center">
-                <div className="w-8 h-8 border border-white/40 rounded-full animate-pulse" />
-              </div>
-            )}
-          </div>
-        )}
+              {/* Target Reticle Overlay */}
+              {isStreaming && (
+                <div className="absolute inset-4 pointer-events-none border border-white/20 rounded-xl flex items-center justify-center">
+                  <div className="w-8 h-8 border border-white/40 rounded-full animate-pulse" />
+                </div>
+              )}
+            </div>
 
         {/* Control Footer & Mode Switcher */}
         <div className="p-3 space-y-2.5">
@@ -300,16 +300,18 @@ export const CameraVisionWidget: React.FC<CameraVisionWidgetProps> = ({
             </button>
           </div>
 
-          {/* Privacy Footnote */}
-          <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-white/[0.04]">
-            <div className="flex items-center gap-1">
-              <ShieldCheck size={11} className="text-emerald-400" />
-              <span>Privacy-first • Zero background recording</span>
+            {/* Privacy Footnote */}
+            <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-white/[0.04]">
+              <div className="flex items-center gap-1">
+                <ShieldCheck size={11} className="text-emerald-400" />
+                <span>Privacy-first • Zero background recording</span>
+              </div>
+              <span className="font-mono text-slate-500">{statusText}</span>
             </div>
-            <span className="font-mono text-slate-500">{statusText}</span>
           </div>
         </div>
       </div>
-    </div>
+    )}
+  </>
   );
 };

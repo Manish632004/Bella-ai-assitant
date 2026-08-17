@@ -67,21 +67,37 @@ export class CameraVisionManager {
     try {
       this.stopCamera();
 
-      if (deviceId) {
-        this.selectedDeviceId = deviceId;
+      if (deviceId && deviceId.trim()) {
+        this.selectedDeviceId = deviceId.trim();
       }
 
-      const constraints: MediaStreamConstraints = {
-        video: {
-          deviceId: this.selectedDeviceId ? { exact: this.selectedDeviceId } : undefined,
-          width: { ideal: 1280, min: 640 },
-          height: { ideal: 720, min: 480 },
-          frameRate: { ideal: 15 }
-        },
-        audio: false
-      };
+      let stream: MediaStream | null = null;
 
-      this.stream = await navigator.mediaDevices.getUserMedia(constraints);
+      // 1. Try ideal resolution with device ID
+      try {
+        const constraints: MediaStreamConstraints = {
+          video: {
+            deviceId: this.selectedDeviceId ? { ideal: this.selectedDeviceId } : undefined,
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            facingMode: { ideal: "user" }
+          },
+          audio: false
+        };
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+      } catch (e) {
+        console.warn("[CameraVision] Ideal constraint failed, falling back to basic video constraint:", e);
+      }
+
+      // 2. Fallback to basic constraint if ideal failed
+      if (!stream) {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: false
+        });
+      }
+
+      this.stream = stream;
 
       if (previewElement) {
         this.videoElement = previewElement;
@@ -95,7 +111,8 @@ export class CameraVisionManager {
       this.videoElement.srcObject = this.stream;
       await this.videoElement.play().catch(() => {});
 
-      this.setMode(mode);
+      const activeMode = mode === "OFF" ? "CONVERSATION" : mode;
+      this.setMode(activeMode);
       if (this.onStatusChange) this.onStatusChange("Camera Active & Streaming");
       return true;
     } catch (err: any) {
