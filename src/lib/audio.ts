@@ -145,8 +145,11 @@ export class BellaAudioSession {
    * Pushes a compressed JPEG base64 screenshot frame directly to the live WebSocket server.
    */
   public sendVideoFrame(base64Data: string) {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN && this.currentState !== "disconnected") {
-      this.ws.send(JSON.stringify({ type: "video", video: base64Data }));
+    if (this.ws && this.ws.readyState === WebSocket.OPEN && (this.currentState === "listening" || this.currentState === "speaking")) {
+      const clean = base64Data.includes(",") ? base64Data.split(",")[1] : base64Data;
+      if (clean && clean.length > 50) {
+        this.ws.send(JSON.stringify({ type: "video", video: clean }));
+      }
     }
   }
 
@@ -193,7 +196,8 @@ export class BellaAudioSession {
           }
 
           this.inputAudioCtx = new AudioContextClass({ sampleRate: 16000 });
-          this.outputAudioCtx = new AudioContextClass({ sampleRate: 24000 });
+          // Native system output context eliminates Windows WASAPI driver downsampling jitter
+          this.outputAudioCtx = new AudioContextClass();
 
           // Ensure Audio Contexts are active and resumed to bypass browser security blocks
           if (this.inputAudioCtx.state === "suspended") {
@@ -205,6 +209,7 @@ export class BellaAudioSession {
           
           // Setup custom output Analyser & Volume Gains
           this.outputGainNode = this.outputAudioCtx.createGain();
+          this.outputGainNode.gain.value = 1.0;
           this.outputAnalyser = this.outputAudioCtx.createAnalyser();
           this.outputAnalyser.fftSize = 256;
           this.outputAnalyser.smoothingTimeConstant = 0.8;
@@ -212,7 +217,7 @@ export class BellaAudioSession {
           this.outputGainNode.connect(this.outputAnalyser);
           this.outputAnalyser.connect(this.outputAudioCtx.destination);
           
-          // Obtain User Microphone layout
+          // Obtain User Microphone layout with enhanced hardware echo suppression
           const stream = await navigator.mediaDevices.getUserMedia({
             audio: {
               echoCancellation: true,
@@ -249,6 +254,21 @@ export class BellaAudioSession {
             if (this.currentState === "disconnected" || this.currentState === "connecting") return;
             
             const channelData = e.inputBuffer.getChannelData(0);
+            
+            // While Bella is actively speaking, calculate energy to prevent speaker bleed
+            // from falsely triggering Gemini Live VAD self-interruptions
+            const isSpeaking = this.currentState === "speaking" || this.activeSources.length > 0;
+            if (isSpeaking) {
+              let sumSquares = 0;
+              for (let i = 0; i < channelData.length; i++) {
+                sumSquares += channelData[i] * channelData[i];
+              }
+              const rms = Math.sqrt(sumSquares / channelData.length);
+              // If energy is below the deliberate user speech threshold, suppress speaker echo
+              if (rms < 0.040) {
+                return;
+              }
+            }
             
             // Convert to base64 Int16 Little Endian PCM
             const pcmBuffer = floatTo16BitPCM(channelData);
@@ -443,10 +463,10 @@ export class BellaAudioSession {
 
       const currentTime = this.outputAudioCtx.currentTime;
       
-      // Gapless scheduler sync
+      // Gapless jitter-free scheduler sync
       if (this.nextStartTime < currentTime) {
-        // Start fresh: 30ms ahead to bridge schedule timing
-        this.nextStartTime = currentTime + 0.03;
+        // Start fresh with a 65ms buffer lead to bridge network packet jitter and prevent audio stutter
+        this.nextStartTime = currentTime + 0.065;
       }
 
       source.start(this.nextStartTime);
@@ -459,9 +479,19 @@ export class BellaAudioSession {
           this.activeSources.splice(index, 1);
         }
         
-        // If there are no more active play nodes, revert state back to listening
+        // Revert back to listening only when all queued chunks finish playing
         if (this.activeSources.length === 0 && this.currentState === "speaking") {
-          this.setState("listening");
+          const now = this.outputAudioCtx ? this.outputAudioCtx.currentTime : currentTime;
+          if (now >= this.nextStartTime - 0.03) {
+            this.setState("listening");
+          } else {
+            const remainingMs = Math.max(10, (this.nextStartTime - now) * 1000);
+            setTimeout(() => {
+              if (this.activeSources.length === 0 && this.currentState === "speaking") {
+                this.setState("listening");
+              }
+            }, remainingMs + 10);
+          }
         }
       };
 

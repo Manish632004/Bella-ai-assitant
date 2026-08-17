@@ -89,12 +89,15 @@ export default function App() {
       return;
     }
 
-    if (stateRef.current === "disconnected") {
+    // Only send frames when actively connected and interacting
+    if (stateRef.current !== "listening" && stateRef.current !== "speaking") {
       return;
     }
 
     try {
-      if (video.videoWidth === 0 || video.videoHeight === 0) return;
+      if (video.readyState < 2 || !video.videoWidth || !video.videoHeight || video.videoWidth < 10 || video.videoHeight < 10) {
+        return;
+      }
 
       if (!screenCanvasRef.current) {
         screenCanvasRef.current = document.createElement("canvas");
@@ -103,8 +106,8 @@ export default function App() {
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
 
-      // Restrict maximum resolution size to keep payload light for Gemini Live
-      const maxDim = 960;
+      // 768px maximum resolution keeps latency minimal and ensures reliable Gemini Live vision processing
+      const maxDim = 768;
       let width = video.videoWidth;
       let height = video.videoHeight;
 
@@ -123,11 +126,11 @@ export default function App() {
 
       ctx.drawImage(video, 0, 0, width, height);
 
-      // Highly compressed JPEG standard is optimized and preserves details perfectly
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.55);
-      const base64 = dataUrl.split(",")[1];
+      // Lightweight 0.50 JPEG encoding ensures lightning-fast transmission without socket saturation
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.50);
+      const base64 = dataUrl.includes(",") ? dataUrl.split(",")[1] : "";
 
-      if (sessionRef.current && stateRef.current !== "disconnected") {
+      if (base64 && base64.length > 50 && sessionRef.current && stateRef.current !== "disconnected") {
         sessionRef.current.sendVideoFrame(base64);
       }
     } catch (err) {
@@ -192,6 +195,12 @@ export default function App() {
 
       setIsScreenSharing(true);
       setIsScreenSharingPaused(false);
+
+      // If Bella is currently disconnected, wake her up once for the screen share session
+      if (stateRef.current === "disconnected") {
+        setSleepReason("none");
+        sessionRef.current?.connect();
+      }
 
       // Stop handling when native stop sharing bar button ends
       const videoTrack = stream.getVideoTracks()[0];
@@ -322,9 +331,12 @@ export default function App() {
     } else if (
       lower.includes("turn off camera") ||
       lower.includes("stop camera") ||
-      lower.includes("close camera") ||
+      lower.includes("turn off the camera") ||
+      lower.includes("stop using camera") ||
+      lower.includes("stop the camera") ||
+      lower.includes("close the camera") ||
       lower.includes("disable camera") ||
-      lower.includes("stop using camera")
+      lower.includes("shut off camera")
     ) {
       setShowCameraVision(false);
     }
@@ -440,16 +452,18 @@ export default function App() {
     }, autoSleepSeconds * 1000);
   }, [state, autoSleepSeconds, showCameraVision, isScreenSharing]);
 
-  // Automatically connect / wake Bella when Camera Vision is activated
+  // When Camera Vision is activated by user or voice, wake Bella once if she is currently disconnected
+  const prevShowCameraVisionRef = useRef<boolean>(false);
   useEffect(() => {
-    if (showCameraVision) {
-      if (state === "disconnected") {
+    if (showCameraVision && !prevShowCameraVisionRef.current) {
+      if (stateRef.current === "disconnected") {
         console.log("[Camera Vision] Camera activated while Bella is disconnected. Auto-activating Bella session...");
         setSleepReason("none");
         sessionRef.current?.connect();
       }
     }
-  }, [showCameraVision, state]);
+    prevShowCameraVisionRef.current = showCameraVision;
+  }, [showCameraVision]);
 
   // Maintain auto-sleep timer whenever connection state or visual streaming changes
   useEffect(() => {
@@ -611,6 +625,12 @@ export default function App() {
       body: JSON.stringify({ suggestionId: "all", action: "reset" })
     }).catch(() => {});
   };
+
+  const handleCameraFrameCaptured = useCallback((base64: string) => {
+    if (sessionRef.current && stateRef.current !== "disconnected") {
+      sessionRef.current.sendVideoFrame(base64);
+    }
+  }, []);
 
   const handleAddManualMemory = async (category: MemoryCategory, text: string) => {
     try {
@@ -1573,11 +1593,7 @@ export default function App() {
         isOpen={showCameraVision}
         isMiniMode={isMiniMode}
         onClose={() => setShowCameraVision(false)}
-        onFrameCaptured={(base64) => {
-          if (sessionRef.current && state !== "disconnected") {
-            sessionRef.current.sendVideoFrame(base64);
-          }
-        }}
+        onFrameCaptured={handleCameraFrameCaptured}
         onRememberVisual={(summary) => {
           handleAddManualMemory("preference", summary);
         }}

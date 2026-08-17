@@ -2,8 +2,8 @@
   "autoStart": true,
   "wakeWordEnabled": true,
   "wakePhrase": "hey bella",
-  "micDeviceId": "",
-  "sensitivity": 86,
+  "micDeviceId": "a9351ea95a1802e06e90ddda0472facdc8b04ddcc2e17e33b6a89c35dddb6539",
+  "sensitivity": 97,
   "animations": true,
   "autoSleepSeconds": 60
 }

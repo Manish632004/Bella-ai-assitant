@@ -202,7 +202,7 @@ export class ProactiveEngine {
       .map((l) => `${l.topic} (${Math.round((1 - l.retentionScore) * 100)}% decay)`);
 
     const projects = context.projects
-      .filter((p) => p.status === "active")
+      .filter((p) => p.status === "Active" || p.status === "On Track")
       .map((p) => p.name);
 
     return {

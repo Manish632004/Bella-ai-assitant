@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "entries": {
+    "gemini_key_5f800f2a": {
+      "id": "gemini_key_5f800f2a",
+      "ciphertext": "58668717e6a026d307dadc50f6d9c5e001551af9ff4c9bcabdf246d24e4e863d83b4353da90610ed32f6d28c97427670f06afcccb1",
+      "iv": "cb6786ec32b17a798eaa6b18",
+      "tag": "d3db50e861f3457de38255ccb3f39ed5"
+    }
+  }
+}

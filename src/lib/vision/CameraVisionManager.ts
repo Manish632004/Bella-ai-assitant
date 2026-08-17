@@ -160,24 +160,24 @@ export class CameraVisionManager {
     }
 
     if (mode === "CONVERSATION") {
-      // 0.8 FPS (1 frame every 1.25s) for smooth conversational responses
+      // 0.5 FPS (1 frame every 2.0s) - optimal balance for real-time vision + quota preservation
       this.samplingTimer = setInterval(() => {
         this.captureAndEmitFrame();
-      }, 1250);
-      // Emit immediate first frame
-      this.captureAndEmitFrame();
+      }, 2000);
+      // Emit initial frame
+      setTimeout(() => this.captureAndEmitFrame(), 200);
     } else if (mode === "REAL-TIME") {
-      // 1.5 FPS (1 frame every 660ms) for high responsiveness
+      // 1.0 FPS (1 frame every 1.0s) for active debugging
       this.samplingTimer = setInterval(() => {
         this.captureAndEmitFrame();
-      }, 660);
-      // Emit immediate first frame
-      this.captureAndEmitFrame();
+      }, 1000);
+      // Emit initial frame
+      setTimeout(() => this.captureAndEmitFrame(), 200);
     }
   }
 
   public captureSnapshot(): string | null {
-    return this.captureAndEmitFrame(0.85); // High quality snapshot
+    return this.captureAndEmitFrame(0.80); // High quality snapshot
   }
 
   private captureAndEmitFrame(customQuality?: number): string | null {
@@ -187,6 +187,10 @@ export class CameraVisionManager {
     }
 
     try {
+      if (video.readyState < 2) {
+        return null;
+      }
+
       let width = video.videoWidth;
       let height = video.videoHeight;
 
@@ -202,7 +206,8 @@ export class CameraVisionManager {
       const ctx = canvas.getContext("2d");
       if (!ctx) return null;
 
-      const maxDim = 1024; // 1024px maximum dimension for crisp OCR and small component detection
+      // 640-768px is ideal for Gemini Live multimodal vision (low latency, zero rate limits)
+      const maxDim = customQuality ? 768 : 640;
       if (width > maxDim || height > maxDim) {
         if (width > height) {
           height = Math.round((height * maxDim) / width);
@@ -217,15 +222,15 @@ export class CameraVisionManager {
       canvas.height = height;
       ctx.drawImage(video, 0, 0, width, height);
 
-      const quality = customQuality || 0.70;
+      const quality = customQuality || 0.50;
       const dataUrl = canvas.toDataURL("image/jpeg", quality);
-      const base64 = dataUrl.split(",")[1];
+      const base64 = dataUrl.includes(",") ? dataUrl.split(",")[1] : "";
 
-      if (base64 && this.onFrameCaptured) {
+      if (base64 && base64.length > 50 && this.onFrameCaptured) {
         this.onFrameCaptured(base64);
       }
 
-      return base64;
+      return base64 || null;
     } catch (err) {
       console.error("[CameraVision] Frame capture error:", err);
       return null;

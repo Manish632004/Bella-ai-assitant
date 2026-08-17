@@ -47,11 +47,21 @@ export const CameraVisionWidget: React.FC<CameraVisionWidgetProps> = ({
   const [isMinimized, setIsMinimized] = useState<boolean>(false);
   const [lastSnapshotTaken, setLastSnapshotTaken] = useState<boolean>(false);
 
-  // Initialize Camera Manager
+  const onFrameCapturedRef = useRef(onFrameCaptured);
+  useEffect(() => {
+    onFrameCapturedRef.current = onFrameCaptured;
+  }, [onFrameCaptured]);
+
+  const onRememberVisualRef = useRef(onRememberVisual);
+  useEffect(() => {
+    onRememberVisualRef.current = onRememberVisual;
+  }, [onRememberVisual]);
+
+  // Initialize Camera Manager ONCE on mount
   useEffect(() => {
     const manager = new CameraVisionManager({
       onFrameCaptured: (base64) => {
-        if (onFrameCaptured) onFrameCaptured(base64);
+        if (onFrameCapturedRef.current) onFrameCapturedRef.current(base64);
       },
       onModeChange: (m) => {
         if (m !== "OFF") {
@@ -70,7 +80,7 @@ export const CameraVisionWidget: React.FC<CameraVisionWidgetProps> = ({
     return () => {
       manager.stopCamera();
     };
-  }, [onFrameCaptured]);
+  }, []);
 
   // Handle open/close streaming
   useEffect(() => {
@@ -78,7 +88,7 @@ export const CameraVisionWidget: React.FC<CameraVisionWidgetProps> = ({
       const activeMode = mode === "OFF" ? "CONVERSATION" : mode;
       if (mode === "OFF") setMode("CONVERSATION");
 
-      if (managerRef.current) {
+      if (managerRef.current && !managerRef.current.isStreaming()) {
         managerRef.current.startCamera(selectedCamera, activeMode, videoRef.current || undefined).then((ok) => {
           setIsStreaming(ok);
           if (ok && videoRef.current) {

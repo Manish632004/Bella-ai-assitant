@@ -23,6 +23,7 @@ import {
   hasGeminiApiKey,
   setGeminiApiKey,
 } from "./server_paths";
+import { geminiKeyPool } from "./GeminiKeyPoolManager";
 import { getProactiveEngine } from "./proactive/ProactiveEngine";
 import { computerActionEngine, AppRegistry } from "./computer";
 import {
@@ -51,6 +52,7 @@ interface ActiveSessionState {
   dialogueHistory: { role: string; text: string }[];
   lastConnectedAt: number;
   lastDisconnectedAt: number;
+  lastVideoFrameTime?: number;
 }
 
 const activeSessions = new Map<string, ActiveSessionState>();
@@ -1551,6 +1553,79 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
   });
 
   // ---------------------------------------------------------------------------
+  // Gemini API Key Pool & Automatic Failover Endpoints
+  // ---------------------------------------------------------------------------
+  app.get("/api/keys/gemini", (_req, res) => {
+    try {
+      const keys = geminiKeyPool.getAllKeys();
+      res.json({ keys });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/keys/gemini", express.json(), (req, res) => {
+    try {
+      const { name, key, priority } = req.body;
+      if (!key) return res.status(400).json({ error: "Key is required" });
+      const added = geminiKeyPool.addKey(name, key, priority);
+      res.json({ key: added });
+    } catch (e: any) {
+      res.status(400).json({ error: e.message });
+    }
+  });
+
+  app.delete("/api/keys/gemini/:id", (req, res) => {
+    try {
+      const ok = geminiKeyPool.removeKey(req.params.id);
+      res.json({ success: ok });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.patch("/api/keys/gemini/:id", express.json(), (req, res) => {
+    try {
+      const updated = geminiKeyPool.updateKey(req.params.id, req.body);
+      if (!updated) return res.status(404).json({ error: "Key not found" });
+      res.json({ key: updated });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/keys/gemini/:id/test", async (req, res) => {
+    try {
+      const result = await geminiKeyPool.testKey(req.params.id);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ success: false, status: "error", message: e.message });
+    }
+  });
+
+  app.post("/api/keys/gemini/test-raw", express.json(), async (req, res) => {
+    try {
+      const { key } = req.body;
+      if (!key) return res.status(400).json({ error: "Key is required" });
+      const result = await geminiKeyPool.testKey(key);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ success: false, status: "error", message: e.message });
+    }
+  });
+
+  app.post("/api/keys/gemini/reorder", express.json(), (req, res) => {
+    try {
+      const { orderedIds } = req.body;
+      if (!Array.isArray(orderedIds)) return res.status(400).json({ error: "orderedIds array is required" });
+      const reordered = geminiKeyPool.reorderKeys(orderedIds);
+      res.json({ keys: reordered });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ---------------------------------------------------------------------------
   // Proactive Intelligence System Endpoints
   // ---------------------------------------------------------------------------
   const proactiveEngine = getProactiveEngine();
@@ -1969,16 +2044,21 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
     const isFirstActivation = sessionState.activationCount === 1;
     console.log(`[Bella Live] Client connected (sessionId="${sessionId}", activation #${sessionState.activationCount}, isFirstActivation=${isFirstActivation}, historyTurns=${sessionState.dialogueHistory.length})`);
 
-    const apiKey = getGeminiApiKey();
+    const activeKeyObj = geminiKeyPool.getActiveKey();
+    const apiKey = activeKeyObj?.key || getGeminiApiKey();
 
     if (!apiKey) {
-      console.error("No Gemini API key configured.");
+      console.error("No Gemini API key configured in key pool.");
       clientWs.send(JSON.stringify({
         type: "error",
         error: "NO_API_KEY: Add your Gemini API key in Settings to start talking to BELLA."
       }));
       clientWs.close();
       return;
+    }
+
+    if (activeKeyObj) {
+      console.log(`[Bella Live] Using key "${activeKeyObj.name}" (${activeKeyObj.id}) from secure Key Pool.`);
     }
     
     try {
@@ -2987,10 +3067,18 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
         },
         callbacks: {
           onmessage: (message: LiveServerMessage) => {
-            // Audio Stream Chunk (model response audio play, 24kHz raw PCM)
-            const audio = message.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
-            if (audio) {
-              clientWs.send(JSON.stringify({ type: "audio", audio }));
+            // Audio Stream Chunks & Model Transcription (iterates through all parts)
+            const modelParts = message.serverContent?.modelTurn?.parts;
+            if (Array.isArray(modelParts)) {
+              for (const part of modelParts) {
+                if (part.inlineData?.data) {
+                  clientWs.send(JSON.stringify({ type: "audio", audio: part.inlineData.data }));
+                }
+                if (part.text) {
+                  clientWs.send(JSON.stringify({ type: "transcription", role: "model", text: part.text }));
+                  currentModelResponseText += part.text;
+                }
+              }
             }
             
             // Interruption flag
@@ -3030,21 +3118,18 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
               }
             }
             
-            // Transcription of model output (text chunk)
-            const modelText = (message.serverContent as any)?.modelTurn?.parts?.[0]?.text;
-            if (modelText) {
-              clientWs.send(JSON.stringify({ type: "transcription", role: "model", text: modelText }));
-              currentModelResponseText += modelText;
-            }
-            
             // User input transcription (user speech text translated by Gemini)
-            const userTextOutput = (message.serverContent as any)?.userTurn?.parts?.[0]?.text;
-            if (userTextOutput) {
-              clientWs.send(JSON.stringify({ type: "transcription", role: "user", text: userTextOutput }));
-              sessionState.dialogueHistory.push({ role: "user", text: userTextOutput });
-              temporalMemoryManager.recordConversationTurn("user", userTextOutput);
-              if (sessionState.dialogueHistory.length > 60) {
-                sessionState.dialogueHistory = sessionState.dialogueHistory.slice(-40);
+            const userParts = (message.serverContent as any)?.userTurn?.parts;
+            if (Array.isArray(userParts)) {
+              for (const part of userParts) {
+                if (part.text) {
+                  clientWs.send(JSON.stringify({ type: "transcription", role: "user", text: part.text }));
+                  sessionState.dialogueHistory.push({ role: "user", text: part.text });
+                  temporalMemoryManager.recordConversationTurn("user", part.text);
+                  if (sessionState.dialogueHistory.length > 60) {
+                    sessionState.dialogueHistory = sessionState.dialogueHistory.slice(-40);
+                  }
+                }
               }
             }
             
@@ -3554,10 +3639,34 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
           },
           onerror: (err: any) => {
             console.error("[Gemini Live Session Error]:", err);
+            if (activeKeyObj) {
+              const failover = geminiKeyPool.reportFailure(activeKeyObj.id, err);
+              if (failover.switched && failover.nextKey) {
+                console.log(`[KeyPool Failover] Switched from "${activeKeyObj.name}" to "${failover.nextKey.name}".`);
+                clientWs.send(JSON.stringify({
+                  type: "key_failover",
+                  fromKey: activeKeyObj.name,
+                  toKey: failover.nextKey.name
+                }));
+              }
+            }
             clientWs.send(JSON.stringify({ type: "error", error: err?.message || String(err) }));
           },
           onclose: (e: any) => {
-            console.log("[Gemini Live Session Closed]:", e?.reason || e || "Normal closure");
+            const reason = e?.reason || e || "Normal closure";
+            console.log("[Gemini Live Session Closed]:", reason);
+            const rStr = String(reason).toLowerCase();
+            if (activeKeyObj && (rStr.includes("quota") || rStr.includes("rate limit") || rStr.includes("429") || rStr.includes("resource_exhausted"))) {
+              const failover = geminiKeyPool.reportFailure(activeKeyObj.id, reason);
+              if (failover.switched && failover.nextKey) {
+                console.log(`[KeyPool Failover] Quota reached on "${activeKeyObj.name}". Next key: "${failover.nextKey.name}".`);
+                clientWs.send(JSON.stringify({
+                  type: "key_failover",
+                  fromKey: activeKeyObj.name,
+                  toKey: failover.nextKey.name
+                }));
+              }
+            }
             clientWs.send(JSON.stringify({ type: "status", status: "session_closed" }));
           }
         }
@@ -3602,9 +3711,22 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
               audio: { data: msg.audio, mimeType: "audio/pcm;rate=16000" }
             });
           } else if (msg.type === "video" && msg.video) {
-            session.sendRealtimeInput({
-              video: { data: msg.video, mimeType: "image/jpeg" }
-            });
+            try {
+              const rawVideo = typeof msg.video === "string" ? msg.video : "";
+              const cleanBase64 = rawVideo.includes(",") ? rawVideo.split(",")[1] : rawVideo;
+              if (cleanBase64 && cleanBase64.length > 50) {
+                const now = Date.now();
+                // Enforce minimum 700ms throttle between video frames to maintain optimal Gemini Live bandwidth
+                if (!sessionState.lastVideoFrameTime || now - sessionState.lastVideoFrameTime >= 700) {
+                  sessionState.lastVideoFrameTime = now;
+                  session.sendRealtimeInput({
+                    video: { data: cleanBase64, mimeType: "image/jpeg" }
+                  });
+                }
+              }
+            } catch (err) {
+              console.warn("[Gemini Live Video Frame] Error sending frame to session:", err);
+            }
           } else if (msg.type === "toolResponse") {
             session.sendToolResponse({
               functionResponses: [

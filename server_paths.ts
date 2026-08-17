@@ -1,4 +1,4 @@
-﻿/**
+/**
  * BELLA â€” path & secret resolution.
  *
  * Separates read-only *code/asset* locations (shipped with the app) from the
@@ -52,12 +52,18 @@ function readSecrets(): Secrets {
 
 /**
  * Resolve the active Gemini API key.
- * Priority: user-entered key (secrets.json) â†’ environment (.env, dev only).
+ * Priority: Key Pool active key â†’ user-entered key (secrets.json) â†’ environment (.env).
  */
 export function getGeminiApiKey(): string | undefined {
+  try {
+    const { geminiKeyPool } = require("./GeminiKeyPoolManager");
+    const active = geminiKeyPool.getActiveKey();
+    if (active && active.key) return active.key;
+  } catch {}
+
   const stored = readSecrets().geminiApiKey?.trim();
   if (stored) return stored;
-  const env = process.env.GEMINI_API_KEY?.trim();
+  const env = process.env.GEMINI_API_KEY?.trim() || process.env.GOOGLE_API_KEY?.trim();
   return env || undefined;
 }
 

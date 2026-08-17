@@ -21,11 +21,13 @@ import {
   Flame,
   Compass,
   RotateCcw,
+  Key,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { BellaSettings } from "../lib/settingsStore";
 import { Memory, MemoryCategory } from "../lib/memoryTypes";
 import { ProactiveSettings, ProactiveLevel } from "../../proactive/types";
+import { GeminiKeyPoolManager } from "./keys/GeminiKeyPoolManager";
 
 interface SettingsPanelProps {
   isOpen: boolean;
@@ -49,7 +51,7 @@ interface SettingsPanelProps {
   onResetProactiveFeedback?: () => void;
 }
 
-type SettingsTab = "general" | "proactive" | "recalls" | "voice" | "system" | "about";
+type SettingsTab = "general" | "keys" | "proactive" | "recalls" | "voice" | "system" | "about";
 
 /** A single toggle row matching the existing switch style. */
 function ToggleRow({
@@ -480,6 +482,7 @@ export function SettingsPanel({
 
   const tabs: { id: SettingsTab; label: string; icon: any }[] = [
     { id: "general", label: "GENERAL", icon: Power },
+    { id: "keys", label: "GEMINI KEYS", icon: Key },
     { id: "proactive", label: "PROACTIVE AI", icon: Compass },
     { id: "recalls", label: "RECALLS", icon: Brain },
     { id: "voice", label: "VOICE", icon: Mic },
@@ -617,6 +620,11 @@ export function SettingsPanel({
                     </div>
                   )}
                 </div>
+              )}
+
+              {/* ---------------- GEMINI API KEY POOL ---------------- */}
+              {activeTab === "keys" && (
+                <GeminiKeyPoolManager themeColor={themeColor} />
               )}
 
               {/* ---------------- PROACTIVE INTELLIGENCE ---------------- */}

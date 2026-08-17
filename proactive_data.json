@@ -1,6 +1,33 @@
 {
   "tasks": [
     {
+      "id": "task-ib2r905",
+      "title": "practice Room on TryHackMe",
+      "category": "Study",
+      "priority": "high",
+      "status": "pending",
+      "estimatedMinutes": 90,
+      "createdAt": "2026-08-17T10:16:30.856Z"
+    },
+    {
+      "id": "task-0l31bq6",
+      "title": "drink 5 liters of water",
+      "category": "Personal",
+      "priority": "medium",
+      "status": "pending",
+      "estimatedMinutes": 15,
+      "createdAt": "2026-08-17T10:16:30.855Z"
+    },
+    {
+      "id": "task-x6kyirb",
+      "title": "workout",
+      "category": "Personal",
+      "priority": "medium",
+      "status": "pending",
+      "estimatedMinutes": 60,
+      "createdAt": "2026-08-17T10:16:30.854Z"
+    },
+    {
       "id": "task-zjydygh",
       "title": "Fix audio output issue",
       "category": "Personal",
@@ -160,6 +187,27 @@
   ],
   "calendarEvents": [],
   "activities": [
+    {
+      "id": "act-bydo5uc",
+      "title": "Created task \"practice Room on TryHackMe\"",
+      "type": "tasks",
+      "description": "Priority: high, Category: Study",
+      "timestamp": "2026-08-17T10:16:30.856Z"
+    },
+    {
+      "id": "act-ztgqopg",
+      "title": "Created task \"drink 5 liters of water\"",
+      "type": "tasks",
+      "description": "Priority: medium, Category: Personal",
+      "timestamp": "2026-08-17T10:16:30.855Z"
+    },
+    {
+      "id": "act-8awk2wt",
+      "title": "Created task \"workout\"",
+      "type": "tasks",
+      "description": "Priority: medium, Category: Personal",
+      "timestamp": "2026-08-17T10:16:30.855Z"
+    },
     {
       "id": "act-tie19qq",
       "title": "Created task \"Fix audio output issue\"",
