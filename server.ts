@@ -37,6 +37,7 @@ import {
   ExplainabilityEngine,
   PrivacyController
 } from "./personal-intelligence";
+import { temporalMemoryManager } from "./temporal-memory";
 
 dotenv.config();
 
@@ -1886,6 +1887,47 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
       res.status(500).json({ error: e.message });
     }
   });
+
+  // ---------------------------------------------------------------------------
+  // Temporal Session Memory System Endpoints
+  // ---------------------------------------------------------------------------
+  temporalMemoryManager.init().catch(err => console.error("[Server] Temporal Memory init error:", err));
+
+  // Recent Timeline (Active Context + Session + Previous 7 Days)
+  app.get("/api/temporal/timeline", async (req, res) => {
+    try {
+      const days = parseInt(req.query.days as string, 10) || 7;
+      const timeline = await temporalMemoryManager.getTimeline(days);
+      const activeContext = temporalMemoryManager.getSessionManager().getActiveContext();
+      const workingState = temporalMemoryManager.getSessionManager().getSessionWorkingState();
+      res.json({ timeline, activeContext, workingState });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Natural Language Relative Time Query
+  app.get("/api/temporal/query", async (req, res) => {
+    try {
+      const q = (req.query.q as string) || "";
+      const project = req.query.project as string | undefined;
+      const result = await temporalMemoryManager.queryTemporalMemory(q, project);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Consolidate Current Session
+  app.post("/api/temporal/summarize", express.json(), async (req, res) => {
+    try {
+      const project = req.body?.project;
+      const summary = await temporalMemoryManager.consolidateCurrentSession(project);
+      res.json({ summary });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
   
   // Custom server running with http.createServer so we can upgrade for WebSocket on port 3000
   const server = http.createServer(app);
@@ -2296,6 +2338,18 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
                       topicTag: { type: Type.STRING, description: "The topic tag to mute." }
                     },
                     required: ["topicTag"]
+                  }
+                },
+                {
+                  name: "queryTemporalMemory",
+                  description: "Look up what MANISH and you worked on an hour ago, earlier today, yesterday, past days, or retrieve previous decisions, completed milestones, and encountered problems.",
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      query: { type: Type.STRING, description: "Natural query (e.g. 'what did we do an hour ago', 'what were we working on yesterday', 'continue where we stopped', 'what did we decide earlier', 'what problems did we encounter')." },
+                      project: { type: Type.STRING, description: "Optional project name filter." }
+                    },
+                    required: ["query"]
                   }
                 },
 
@@ -2906,6 +2960,7 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
               
               if (currentModelResponseText.trim()) {
                 sessionState.dialogueHistory.push({ role: "model", text: currentModelResponseText });
+                temporalMemoryManager.recordConversationTurn("model", currentModelResponseText);
                 currentModelResponseText = "";
                 // Cap running history in memory to last 60 turns
                 if (sessionState.dialogueHistory.length > 60) {
@@ -2913,7 +2968,7 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
                 }
               }
 
-              // Fire asynchronous memory extraction
+              // Fire asynchronous memory extraction & temporal session consolidation
               if (sessionState.dialogueHistory.length >= 2) {
                 (async () => {
                   try {
@@ -2922,6 +2977,7 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
                       console.log("[Memory Sync] Sending refreshed memory list to client.");
                       clientWs.send(JSON.stringify({ type: "memory_sync", memories: updated }));
                     }
+                    await temporalMemoryManager.consolidateCurrentSession();
                   } catch (err) {
                     console.error("[Memory Sync] Error running background consolidation:", err);
                   }
@@ -2941,6 +2997,7 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
             if (userTextOutput) {
               clientWs.send(JSON.stringify({ type: "transcription", role: "user", text: userTextOutput }));
               sessionState.dialogueHistory.push({ role: "user", text: userTextOutput });
+              temporalMemoryManager.recordConversationTurn("user", userTextOutput);
               if (sessionState.dialogueHistory.length > 60) {
                 sessionState.dialogueHistory = sessionState.dialogueHistory.slice(-40);
               }
@@ -3104,6 +3161,40 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
                       });
                     } catch (err: any) {
                       console.error("dismissProactiveTopic error:", err);
+                    }
+                  })();
+                } else if (fc.name === "queryTemporalMemory") {
+                  (async () => {
+                    try {
+                      const args = (fc.args || {}) as any;
+                      const memoryResult = await temporalMemoryManager.queryTemporalMemory(args.query || "", args.project);
+                      const topAnswer = memoryResult.answers[0];
+                      const output = topAnswer
+                        ? {
+                            found: true,
+                            matchedDate: topAnswer.item.date,
+                            reason: topAnswer.matchedReason,
+                            title: topAnswer.item.title,
+                            summary: topAnswer.item.summary,
+                            decisions: topAnswer.item.decisions,
+                            completedTasks: topAnswer.item.tasksCompleted,
+                            problems: topAnswer.item.problemsEncountered,
+                            activeProject: topAnswer.item.activeProject
+                          }
+                        : {
+                            found: false,
+                            result: "No specific past session match found for that timeframe or topic."
+                          };
+
+                      session.sendToolResponse({
+                        functionResponses: [{
+                          name: fc.name,
+                          response: { output },
+                          id: fc.id
+                        }]
+                      });
+                    } catch (err: any) {
+                      console.error("queryTemporalMemory error:", err);
                     }
                   })();
                 } else if (fc.name === "executeComputerAction") {
