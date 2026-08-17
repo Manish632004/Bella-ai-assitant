@@ -26,6 +26,7 @@ import {
   Minus,
   Settings as SettingsIcon,
   LayoutDashboard,
+  Search,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { Memory, MemoryCategory } from "./lib/memoryTypes";
@@ -36,9 +37,11 @@ import { BellaWakeWordDetector } from "./lib/wakeWord";
 import { ProactiveSuggestionCard } from "./components/ProactiveSuggestionCard";
 import { ProactiveSettings, ProactiveSuggestion } from "../proactive/types";
 import { PersonalAIDashboard } from "./components/dashboard/PersonalAIDashboard";
+import { CommandPalette } from "./components/dashboard/CommandPalette";
 
 export default function App() {
   const [state, setState] = useState<LiveState>("disconnected");
+  const [showCommandPalette, setShowCommandPalette] = useState<boolean>(false);
 
   // Real-time Screen Sharing states
   const [isScreenSharing, setIsScreenSharing] = useState<boolean>(false);
@@ -802,13 +805,84 @@ export default function App() {
     }
   };
 
+  // Global Keyboard Shortcuts (Ctrl+K / Cmd+K for Command Palette, Ctrl+D for Dashboard)
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setShowCommandPalette((prev) => !prev);
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d") {
+        e.preventDefault();
+        setShowDashboard((prev) => !prev);
+      }
+    };
+
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+  }, []);
+
+  const handleCommandPaletteAction = (actionType: string, payload?: any) => {
+    switch (actionType) {
+      case "trigger_curiosity":
+        fetch("/api/intelligence/curiosity")
+          .then(r => r.json())
+          .then(data => {
+            if (data.question) {
+              setActiveSuggestion({
+                id: data.question.id,
+                type: "knowledge_suggestion",
+                category: "learning",
+                title: "Curiosity Insight",
+                message: data.question.question,
+                explanation: data.question.explanation,
+                level: "suggestion",
+                score: { relevance: 0.9, urgency: 0.5, importance: 0.8, confidence: 0.85, intrusiveness: 0.2, finalScore: data.question.finalScore },
+                sourceEvents: [],
+                status: "shown",
+                createdAt: new Date().toISOString()
+              });
+            }
+          });
+        break;
+      case "get_recommendations":
+      case "open_learning":
+      case "open_projects":
+      case "start_focus":
+      case "new_task":
+      case "new_note":
+        setShowDashboard(true);
+        break;
+      case "open_memories":
+        setShowMemoryDashboard(true);
+        break;
+      case "open_settings":
+        setShowSettings(true);
+        break;
+      case "toggle_mini_mode":
+        setIsMiniMode((prev) => !prev);
+        break;
+      case "toggle_screen_share":
+        if (isScreenSharing) stopScreenSharing();
+        else startScreenSharing();
+        break;
+      case "activate_voice":
+        if (state === "disconnected") {
+          setSleepReason("none");
+          sessionRef.current?.connect();
+        }
+        break;
+      default:
+        break;
+    }
+  };
+
   return (
     <div
       id="bella-holographic-desktop"
       className={`relative w-full h-screen overflow-hidden ${
         isMiniMode 
           ? "bg-transparent p-0 flex items-center justify-center pointer-events-auto" 
-          : `bg-[#020205] text-white ${getAmbientStyles()} theme-transition flex flex-col justify-between p-6 sm:p-10`
+          : `bg-[#07080B] text-white ${getAmbientStyles()} theme-transition flex flex-col justify-between p-4 sm:p-6`
       } select-none`}
     >
       {/* Ambient Background Gradients matching Frosted Glass theme (Full stage only) */}
@@ -877,14 +951,14 @@ export default function App() {
         />
       </div>
 
-      {/* FULL STAGE FLOATING GLASS NAVBAR */}
+      {/* FULL STAGE FLOATING GLASS NAVBAR (Arc & Apple Inspired) */}
       {!isMiniMode && (
-        <header className="relative z-30 w-full max-w-4xl mx-auto select-none">
-          <div className="flex items-center justify-between px-5 py-2.5 rounded-2xl bg-white/[0.03] backdrop-blur-2xl border border-white/[0.08] shadow-[0_8px_32px_0_rgba(0,0,0,0.37),inset_0_1px_1px_0_rgba(255,255,255,0.08)]">
-            {/* Left Brand & Live State Badge */}
+        <header className="relative z-30 w-full max-w-5xl mx-auto select-none pt-4 px-4">
+          <div className="flex items-center justify-between px-4 py-2 rounded-2xl glass-panel shadow-2xl border border-white/[0.08]">
+            {/* Left Brand & Live State Pill */}
             <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2.5 px-3 py-1 rounded-full bg-white/[0.04] border border-white/[0.06]">
-                <span className="text-xs font-semibold tracking-[0.35em] text-white/70 uppercase font-mono">
+              <div className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/[0.06] shadow-sm">
+                <span className="text-xs font-bold tracking-[0.25em] text-white/90 uppercase font-display">
                   BELLA
                 </span>
                 <span className="relative flex h-2 w-2">
@@ -901,18 +975,119 @@ export default function App() {
                     sleepReason === "auto" ? "bg-amber-400/90" : "bg-white/20"
                   }`} />
                 </span>
-                <span className="text-[9px] font-mono tracking-wider text-white/40 uppercase hidden sm:inline">
-                  {state === "speaking" ? "SPEAKING" :
-                   state === "listening" ? "LISTENING" :
-                   state === "connecting" ? "LINKING" :
-                   sleepReason === "auto" ? "STANDBY (SAY WAKE WORD)" : "INACTIVE"}
+                <span className="text-[10px] font-sans font-medium tracking-wide text-slate-400 uppercase hidden sm:inline">
+                  {state === "speaking" ? "Speaking" :
+                   state === "listening" ? "Listening" :
+                   state === "connecting" ? "Linking" :
+                   sleepReason === "auto" ? "Standby" : "Inactive"}
                 </span>
               </div>
             </div>
 
-            {/* Right Action Glass Pill Buttons */}
+            {/* Center View Switcher Tabs */}
+            <nav className="hidden md:flex items-center gap-1 p-1 rounded-xl bg-black/30 border border-white/[0.05]">
+              <button
+                onClick={() => {
+                  setShowDashboard(false);
+                  setShowMemoryDashboard(false);
+                  setShowSettings(false);
+                }}
+                className={`px-3 py-1 rounded-lg text-xs font-sans font-medium transition-all ${
+                  !showDashboard && !showMemoryDashboard && !showSettings
+                    ? "bg-white/10 text-white shadow-sm font-semibold"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                Stage
+              </button>
+              <button
+                onClick={() => {
+                  setShowMemoryDashboard(false);
+                  setShowSettings(false);
+                  setShowDashboard(true);
+                }}
+                className={`px-3 py-1 rounded-lg text-xs font-sans font-medium transition-all ${
+                  showDashboard
+                    ? "bg-white/10 text-white shadow-sm font-semibold"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                Workspace
+              </button>
+              <button
+                onClick={() => {
+                  setShowDashboard(false);
+                  setShowSettings(false);
+                  setShowMemoryDashboard(true);
+                }}
+                className={`px-3 py-1 rounded-lg text-xs font-sans font-medium transition-all ${
+                  showMemoryDashboard
+                    ? "bg-white/10 text-white shadow-sm font-semibold"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                Memories
+              </button>
+              <button
+                onClick={() => {
+                  setShowDashboard(false);
+                  setShowMemoryDashboard(false);
+                  setShowSettings(true);
+                }}
+                className={`px-3 py-1 rounded-lg text-xs font-sans font-medium transition-all ${
+                  showSettings
+                    ? "bg-white/10 text-white shadow-sm font-semibold"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                Settings
+              </button>
+            </nav>
+
+            {/* Right Action Controls */}
             <div className="flex items-center gap-2">
-              {/* Manual Master Activation / Deactivation Button */}
+              {/* Quick Command Palette Trigger (Raycast style) */}
+              <button
+                onClick={() => setShowCommandPalette(true)}
+                className="hidden lg:flex items-center gap-2 px-2.5 py-1.5 rounded-xl glass-pill text-xs text-slate-400 hover:text-white transition cursor-pointer"
+                title="Open Command Palette (Ctrl+K)"
+              >
+                <Search size={13} className="text-slate-400" />
+                <span className="text-[11px] font-sans">Search</span>
+                <kbd className="px-1.5 py-0.5 text-[9px] font-mono bg-white/[0.06] text-slate-400 rounded border border-white/10">
+                  ⌘K
+                </kbd>
+              </button>
+
+              {/* Real-time Screen Sharing Button */}
+              <button 
+                onClick={isScreenSharing ? stopScreenSharing : startScreenSharing}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-sans transition-all duration-200 cursor-pointer ${
+                  isScreenSharing 
+                    ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-[0_0_12px_rgba(16,185,129,0.25)] font-medium" 
+                    : "glass-pill text-slate-300 hover:text-white"
+                }`}
+                title="Share Screen with Bella"
+              >
+                <Monitor size={13} className={isScreenSharing && !isScreenSharingPaused ? "animate-pulse text-emerald-400" : "text-slate-400"} />
+                <span className="hidden sm:inline">{isScreenSharing ? "Sharing" : "Vision"}</span>
+              </button>
+
+              {/* Float / Mini Mode Button */}
+              <button
+                onClick={() => setIsMiniMode(!isMiniMode)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-sans transition-all duration-200 cursor-pointer ${
+                  isMiniMode
+                    ? "bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 shadow-[0_0_12px_rgba(99,102,241,0.25)] font-medium"
+                    : "glass-pill text-slate-300 hover:text-white"
+                }`}
+                title={isMiniMode ? "Expand to Full Stage" : "Float Mini Companion"}
+              >
+                <PictureInPicture2 size={13} className="text-indigo-400/80" />
+                <span className="hidden sm:inline">{isMiniMode ? "Expand" : "Float"}</span>
+              </button>
+
+              {/* Master Activation / Deactivation Button */}
               <button
                 onClick={() => {
                   if (state === "disconnected") {
@@ -923,89 +1098,23 @@ export default function App() {
                     sessionRef.current?.disconnect();
                   }
                 }}
-                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border text-[11px] font-mono tracking-wider transition-all duration-200 cursor-pointer ${
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border text-xs font-sans transition-all duration-200 cursor-pointer ${
                   state !== "disconnected"
-                    ? "bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border-rose-500/40 shadow-[0_0_12px_rgba(244,63,94,0.3)] font-semibold"
+                    ? "bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border-rose-500/40 shadow-[0_0_12px_rgba(244,63,94,0.25)] font-medium"
                     : sleepReason === "auto"
-                    ? "bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border-amber-500/40 shadow-[0_0_12px_rgba(245,158,11,0.25)] font-semibold"
-                    : "bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border-emerald-500/40 shadow-[0_0_12px_rgba(16,185,129,0.25)] font-semibold"
+                    ? "bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border-amber-500/40 shadow-[0_0_12px_rgba(245,158,11,0.2)] font-medium"
+                    : "bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border-emerald-500/40 shadow-[0_0_12px_rgba(16,185,129,0.2)] font-medium"
                 }`}
                 title={
                   state !== "disconnected"
-                    ? "Manually Deactivate Bella (Disables wake word until manual activation)"
+                    ? "Deactivate Voice Link"
                     : sleepReason === "auto"
                     ? "Wake up Bella immediately (or say 'Hey Bella')"
-                    : "Manually Activate Bella"
+                    : "Activate Voice Link"
                 }
               >
                 <Power size={13} className={state !== "disconnected" ? "text-rose-400" : sleepReason === "auto" ? "text-amber-400" : "text-emerald-400"} />
-                <span>{state !== "disconnected" ? "DEACTIVATE" : sleepReason === "auto" ? "WAKE UP" : "ACTIVATE"}</span>
-              </button>
-
-              {/* Float / Mini Mode Button */}
-              <button
-                onClick={() => setIsMiniMode(!isMiniMode)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-[11px] font-mono tracking-wider transition-all duration-200 cursor-pointer ${
-                  isMiniMode
-                    ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.3)] font-semibold"
-                    : "bg-white/[0.03] hover:bg-white/[0.08] text-white/60 hover:text-white border-white/[0.06] hover:border-white/[0.15]"
-                }`}
-                title={isMiniMode ? "Expand to Full Stage" : "Float Mini Companion"}
-              >
-                <PictureInPicture2 size={13} className="text-cyan-400/80" />
-                <span>{isMiniMode ? "EXPAND" : "FLOAT"}</span>
-              </button>
-
-              {/* Personal AI Dashboard Button */}
-              <button
-                onClick={() => {
-                  if (isMiniMode) {
-                    setIsMiniMode(false);
-                  }
-                  setShowDashboard(!showDashboard);
-                }}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-[11px] font-mono tracking-wider transition-all duration-200 cursor-pointer ${
-                  showDashboard
-                    ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.3)] font-semibold"
-                    : "bg-white/[0.03] hover:bg-white/[0.08] text-white/60 hover:text-white border-white/[0.06] hover:border-white/[0.15]"
-                }`}
-                title="Personal AI Dashboard (Ctrl+D)"
-              >
-                <LayoutDashboard size={13} className={showDashboard ? "text-cyan-400" : "text-white/40"} />
-                <span>DASHBOARD</span>
-              </button>
-
-              {/* Real-time Screen Sharing Button */}
-              <button 
-                onClick={isScreenSharing ? stopScreenSharing : startScreenSharing}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-[11px] font-mono tracking-wider transition-all duration-200 cursor-pointer ${
-                  isScreenSharing 
-                    ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-[0_0_12px_rgba(16,185,129,0.3)] font-semibold" 
-                    : "bg-white/[0.03] hover:bg-white/[0.08] text-white/60 hover:text-white border-white/[0.06] hover:border-white/[0.15]"
-                }`}
-                title="Share Screen with Bella"
-              >
-                <Monitor size={13} className={isScreenSharing && !isScreenSharingPaused ? "animate-pulse text-emerald-400" : "text-white/40"} />
-                <span>{isScreenSharing ? "SHARING" : "SHARE SCREEN"}</span>
-              </button>
-
-              {/* Settings Configuration Button */}
-              <button
-                onClick={() => {
-                  if (isMiniMode) {
-                    setIsMiniMode(false);
-                  }
-                  setShowSettings(!showSettings);
-                }}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-[11px] font-mono tracking-wider transition-all duration-200 cursor-pointer ${
-                  showSettings
-                    ? "bg-indigo-500/20 text-indigo-300 border-indigo-500/40 shadow-[0_0_12px_rgba(99,102,241,0.3)] font-semibold"
-                    : "bg-white/[0.03] hover:bg-white/[0.08] text-white/60 hover:text-white border-white/[0.06] hover:border-white/[0.15]"
-                }`}
-                title="Bella Configuration"
-              >
-                <SettingsIcon size={13} className={showSettings ? "animate-spin [animation-duration:6s] text-indigo-400" : "text-white/40"} />
-                <span>SETTINGS</span>
+                <span>{state !== "disconnected" ? "Deactivate" : sleepReason === "auto" ? "Wake" : "Activate"}</span>
               </button>
             </div>
           </div>
@@ -1382,6 +1491,13 @@ export default function App() {
         onStartVoiceSession={handleToggleConnection}
         voiceState={state}
         themeColor={themeColor}
+      />
+
+      {/* Global Raycast-style Command Palette (Ctrl+K / Cmd+K) */}
+      <CommandPalette
+        isOpen={showCommandPalette}
+        onClose={() => setShowCommandPalette(false)}
+        onSelectAction={handleCommandPaletteAction}
       />
     </div>
   );

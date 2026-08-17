@@ -1,6 +1,33 @@
 {
   "tasks": [
     {
+      "id": "task-qt5s7mn",
+      "title": "practice Room (TryHackMe)",
+      "category": "Study",
+      "priority": "critical",
+      "status": "pending",
+      "estimatedMinutes": 30,
+      "createdAt": "2026-08-17T04:43:27.881Z"
+    },
+    {
+      "id": "task-f0jauwp",
+      "title": "drink 5 liters of water",
+      "category": "Personal",
+      "priority": "high",
+      "status": "pending",
+      "estimatedMinutes": 30,
+      "createdAt": "2026-08-17T04:43:27.880Z"
+    },
+    {
+      "id": "task-z72oumf",
+      "title": "workout",
+      "category": "Personal",
+      "priority": "high",
+      "status": "pending",
+      "estimatedMinutes": 30,
+      "createdAt": "2026-08-17T04:43:27.880Z"
+    },
+    {
       "id": "task-1",
       "title": "Finish authentication system & permission handler",
       "category": "AI Desktop Assistant",
@@ -124,6 +151,27 @@
   ],
   "calendarEvents": [],
   "activities": [
+    {
+      "id": "act-g8z68vx",
+      "title": "Created task \"practice Room (TryHackMe)\"",
+      "type": "tasks",
+      "description": "Priority: critical, Category: Study",
+      "timestamp": "2026-08-17T04:43:27.881Z"
+    },
+    {
+      "id": "act-dfrhik9",
+      "title": "Created task \"drink 5 liters of water\"",
+      "type": "tasks",
+      "description": "Priority: high, Category: Personal",
+      "timestamp": "2026-08-17T04:43:27.880Z"
+    },
+    {
+      "id": "act-69114yu",
+      "title": "Created task \"workout\"",
+      "type": "tasks",
+      "description": "Priority: high, Category: Personal",
+      "timestamp": "2026-08-17T04:43:27.880Z"
+    },
     {
       "id": "act-1",
       "title": "Completed PortSwigger SQLi Lab",

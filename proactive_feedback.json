@@ -143,6 +143,14 @@
       "type": "calendar_suggestion",
       "action": "dismissed",
       "timestamp": "2026-08-17T03:46:12.497Z"
+    },
+    {
+      "id": "87cvn4s4w",
+      "suggestionId": "sug-daily-plan-2026-08-17",
+      "category": "calendar",
+      "type": "calendar_suggestion",
+      "action": "snoozed",
+      "timestamp": "2026-08-17T04:43:01.478Z"
     }
   ],
   "weights": {

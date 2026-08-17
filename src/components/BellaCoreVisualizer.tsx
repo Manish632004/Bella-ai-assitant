@@ -322,18 +322,18 @@ export const BellaCoreVisualizer: React.FC<BellaCoreVisualizerProps> = ({
 
   return (
     <div className={`relative w-full h-full flex items-center justify-center ${isMiniMode ? "pointer-events-auto" : "overflow-hidden"}`}>
-      {/* 1. Behind Overlay / Atmospheric Backlight Glow (Z-index 0) - only in full stage mode */}
+      {/* 1. Behind Overlay / Soft Atmospheric Backlight Glow (Z-index 0) - only in full stage mode */}
       {!isMiniMode && (
         <div className="absolute inset-0 bg-transparent flex items-center justify-center pointer-events-none z-0">
-          <div className={`w-[500px] h-[500px] rounded-full blur-[140px] opacity-25 bg-gradient-to-tr transition-all duration-1000 ${
-            themeColor === "violet" ? "from-purple-600/30 to-fuchsia-600/5" :
-            themeColor === "crimson" ? "from-rose-600/30 to-orange-600/5" :
-            themeColor === "emerald" ? "from-emerald-600/30 to-teal-600/5" :
-            themeColor === "celestial" ? "from-sky-600/30 to-cyan-600/5" :
-            themeColor === "gold" ? "from-amber-600/30 to-yellow-600/5" :
-            themeColor === "rose" ? "from-rose-600/30 to-pink-600/5" :
-            "from-indigo-600/30 to-cyan-600/5"
-          }`} />
+          <div className={`w-[600px] h-[600px] rounded-full blur-[160px] opacity-20 transition-all duration-1000 ${
+            themeColor === "violet" ? "bg-indigo-600/30" :
+            themeColor === "crimson" ? "bg-rose-600/30" :
+            themeColor === "emerald" ? "bg-emerald-600/30" :
+            themeColor === "celestial" ? "bg-cyan-600/25" :
+            themeColor === "gold" ? "bg-amber-600/25" :
+            themeColor === "rose" ? "bg-pink-600/30" :
+            "bg-indigo-600/25"
+          } ${characterState === "talking" ? "scale-110 opacity-30 animate-pulse-glow" : "scale-100"}`} />
         </div>
       )}
 
@@ -344,23 +344,23 @@ export const BellaCoreVisualizer: React.FC<BellaCoreVisualizerProps> = ({
           className={`fixed ${
             (window as any)?.bella?.isDesktop 
               ? "inset-0 w-full h-full" 
-              : "bottom-6 right-6 w-52 sm:w-60 aspect-[4/3]"
+              : "bottom-8 right-8 w-56 sm:w-64 aspect-[4/3]"
           } z-50 flex items-center justify-center cursor-grab active:cursor-grabbing select-none pointer-events-auto`}
           onPointerDown={handlePointerDragStart}
         >
-          {/* Subtle Ambient Floating Glow (Pure transparent aura) */}
-          <div className="absolute inset-4 rounded-full blur-2xl opacity-40 bg-cyan-500/20 pointer-events-none animate-pulse" />
+          {/* Subtle Ambient Floating Glow */}
+          <div className="absolute inset-2 rounded-full blur-3xl opacity-35 bg-indigo-500/20 pointer-events-none animate-pulse-glow" />
 
-          {/* Active Status Pulse Dot */}
+          {/* Active Status Glass Chip */}
           <div 
-            className="absolute bottom-2 right-3 z-50 flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-black/80 backdrop-blur-md border border-white/20 text-[9px] font-mono text-white/80 pointer-events-auto"
+            className="absolute bottom-3 right-4 z-50 flex items-center gap-2 px-3 py-1 rounded-full glass-panel text-[10px] font-sans font-medium text-slate-200 pointer-events-auto shadow-lg"
           >
-            <span className={`w-1.5 h-1.5 rounded-full ${
+            <span className={`w-2 h-2 rounded-full ${
               characterState === "talking" ? "bg-purple-400 animate-ping" :
               characterState === "thinking" ? "bg-amber-400 animate-pulse" :
               "bg-cyan-400 animate-pulse"
             }`} />
-            <span className="capitalize">{characterState}</span>
+            <span className="capitalize tracking-wide">{characterState}</span>
           </div>
 
           {/* Character Video container - grabbing anywhere on the character drags Bella */}
