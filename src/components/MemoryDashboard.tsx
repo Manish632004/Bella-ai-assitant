@@ -1,4 +1,4 @@
-﻿import React, { useState } from "react";
+import React, { useState } from "react";
 import { Memory, MemoryCategory } from "../lib/memoryTypes";
 import { 
   Brain, 
@@ -12,7 +12,13 @@ import {
   Users, 
   Flame, 
   Sparkles,
-  RefreshCw
+  RefreshCw,
+  GraduationCap,
+  Wrench,
+  BookOpen,
+  Film,
+  Camera,
+  Layers
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -33,14 +39,14 @@ export function MemoryDashboard({
   onDeleteMemory,
   themeColor
 }: MemoryDashboardProps) {
-  const [activeTab, setActiveTab] = useState<MemoryCategory | "all">("all");
+  const [activeTab, setActiveTab] = useState<string>("all");
   const [newText, setNewText] = useState("");
-  const [newCategory, setNewCategory] = useState<MemoryCategory>("identity");
+  const [newCategory, setNewCategory] = useState<string>("identity");
   const [isAdding, setIsAdding] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  // Category Configuration
-  const categoryConfig: Record<MemoryCategory, { label: string; icon: any; color: string; bg: string }> = {
+  // Comprehensive Category Configuration
+  const categoryConfig: Record<string, { label: string; icon: any; color: string; bg: string }> = {
     identity: { 
       label: "Identity Core", 
       icon: User, 
@@ -65,11 +71,35 @@ export function MemoryDashboard({
       color: "text-cyan-400 border-cyan-500/25", 
       bg: "bg-cyan-500/5 hover:bg-cyan-500/10" 
     },
+    interest: { 
+      label: "Interests & Passions", 
+      icon: Sparkles, 
+      color: "text-purple-400 border-purple-500/25", 
+      bg: "bg-purple-500/5 hover:bg-purple-500/10" 
+    },
+    learning: { 
+      label: "Learning Path", 
+      icon: BookOpen, 
+      color: "text-blue-400 border-blue-500/25", 
+      bg: "bg-blue-500/5 hover:bg-blue-500/10" 
+    },
+    education: { 
+      label: "Education & Degree", 
+      icon: GraduationCap, 
+      color: "text-teal-400 border-teal-500/25", 
+      bg: "bg-teal-500/5 hover:bg-teal-500/10" 
+    },
+    tools: { 
+      label: "Tools & Stack", 
+      icon: Wrench, 
+      color: "text-amber-300 border-amber-400/25", 
+      bg: "bg-amber-400/5 hover:bg-amber-400/10" 
+    },
     relationship: { 
       label: "Relationships", 
       icon: Users, 
-      color: "text-purple-400 border-purple-500/25", 
-      bg: "bg-purple-500/5 hover:bg-purple-500/10" 
+      color: "text-indigo-400 border-indigo-500/25", 
+      bg: "bg-indigo-500/5 hover:bg-indigo-500/10" 
     },
     emotional: { 
       label: "Milestones", 
@@ -83,6 +113,30 @@ export function MemoryDashboard({
       color: "text-indigo-400 border-indigo-500/25", 
       bg: "bg-indigo-500/5 hover:bg-indigo-500/10" 
     },
+    media: { 
+      label: "Media & Culture", 
+      icon: Film, 
+      color: "text-rose-400 border-rose-500/25", 
+      bg: "bg-rose-500/5 hover:bg-rose-500/10" 
+    },
+    visual_context: {
+      label: "Visual Intelligence",
+      icon: Camera,
+      color: "text-cyan-300 border-cyan-400/25",
+      bg: "bg-cyan-400/5 hover:bg-cyan-400/10"
+    }
+  };
+
+  const getCategoryConfig = (cat?: string) => {
+    if (cat && categoryConfig[cat]) {
+      return categoryConfig[cat];
+    }
+    return {
+      label: cat ? cat.charAt(0).toUpperCase() + cat.slice(1) : "General Context",
+      icon: Layers,
+      color: "text-cyan-400 border-cyan-500/25",
+      bg: "bg-cyan-500/5 hover:bg-cyan-500/10"
+    };
   };
 
   const getThemeBadgeGlow = () => {
@@ -101,7 +155,7 @@ export function MemoryDashboard({
 
   const filteredMemories = activeTab === "all" 
     ? memories 
-    : memories.filter(m => m.category === activeTab);
+    : memories.filter(m => (m.category || "").toLowerCase() === activeTab.toLowerCase());
 
   const handleManualAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -109,7 +163,7 @@ export function MemoryDashboard({
 
     setSubmitting(true);
     try {
-      await onAddMemory(newCategory, newText.trim());
+      await onAddMemory(newCategory as MemoryCategory, newText.trim());
       setNewText("");
       setIsAdding(false);
     } catch (e) {
@@ -119,9 +173,11 @@ export function MemoryDashboard({
     }
   };
 
-  const formatDate = (isoStr: string) => {
+  const formatDate = (isoStr?: string) => {
+    if (!isoStr) return "Durable Record";
     try {
       const d = new Date(isoStr);
+      if (isNaN(d.getTime())) return "Durable Record";
       return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
     } catch (e) {
       return "Durable Record";
@@ -147,7 +203,7 @@ export function MemoryDashboard({
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
             transition={{ type: "spring", damping: 25, stiffness: 200 }}
-            className="absolute inset-y-0 right-0 w-full max-w-lg bg-[#020206]/95 border-l border-white/15 backdrop-blur-2xl z-50 flex flex-col shadow-[0_0_50px_rgba(0,0,0,0.8)]"
+            className="absolute inset-y-0 right-0 w-full max-w-lg bg-[#07080B]/95 border-l border-white/10 backdrop-blur-2xl z-50 flex flex-col shadow-[0_0_50px_rgba(0,0,0,0.8)]"
           >
             {/* Header */}
             <div className="p-6 border-b border-white/10 flex items-center justify-between">
@@ -176,7 +232,7 @@ export function MemoryDashboard({
             {/* Quick stats & action row */}
             <div className="px-6 py-4 bg-white/5 border-b border-white/5 flex items-center justify-between gap-2.5">
               <span className="text-[10px] text-slate-400 font-mono">
-                ðŸ’¡ Bella remembers these details naturally as you chat.
+                💡 Bella remembers these details naturally as you chat.
               </span>
               {!isAdding && (
                 <button
@@ -196,7 +252,7 @@ export function MemoryDashboard({
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: "auto", opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
-                  className="overflow-hidden border-b border-white/15 bg-[#080812]"
+                  className="overflow-hidden border-b border-white/15 bg-[#0E1017]"
                 >
                   <form onSubmit={handleManualAdd} className="p-5 space-y-4">
                     <div>
@@ -204,8 +260,9 @@ export function MemoryDashboard({
                         Memory Archetype Category
                       </label>
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                        {(Object.keys(categoryConfig) as MemoryCategory[]).map((cat) => {
-                          const Icon = categoryConfig[cat].icon;
+                        {Object.keys(categoryConfig).map((cat) => {
+                          const cfg = getCategoryConfig(cat);
+                          const Icon = cfg.icon;
                           const active = newCategory === cat;
                           return (
                             <button
@@ -219,7 +276,7 @@ export function MemoryDashboard({
                               }`}
                             >
                               <Icon size={12} />
-                              <span className="truncate">{categoryConfig[cat].label.split(" ")[0]}</span>
+                              <span className="truncate">{cfg.label.split(" ")[0]}</span>
                             </button>
                           );
                         })}
@@ -233,7 +290,7 @@ export function MemoryDashboard({
                       <textarea
                         value={newText}
                         onChange={(e) => setNewText(e.target.value)}
-                        placeholder="e.g. The user's startup is called Bella, a voice AI platform."
+                        placeholder="e.g. The user prefers hands-on cybersecurity labs with TryHackMe and Burp Suite."
                         required
                         className="w-full h-18 text-xs p-3 rounded-lg border border-white/10 bg-black/40 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500/60 resize-none font-sans"
                       />
@@ -270,11 +327,15 @@ export function MemoryDashboard({
                     : "border-white/5 bg-white/5 text-slate-400 hover:border-white/15"
                 }`}
               >
-                All Memories
+                All ({memories.length})
               </button>
-              {(Object.keys(categoryConfig) as MemoryCategory[]).map((cat) => {
-                const config = categoryConfig[cat];
-                const active = activeTab === cat;
+              {Object.keys(categoryConfig).map((cat) => {
+                const config = getCategoryConfig(cat);
+                const count = memories.filter(m => (m.category || "").toLowerCase() === cat.toLowerCase()).length;
+                if (count === 0 && !["identity", "preference", "goal", "project", "interest", "learning"].includes(cat)) {
+                  return null;
+                }
+                const active = activeTab.toLowerCase() === cat.toLowerCase();
                 return (
                   <button
                     key={cat}
@@ -285,7 +346,7 @@ export function MemoryDashboard({
                         : "border-white/5 bg-white/5 text-slate-400 hover:border-white/15"
                     }`}
                   >
-                    {config.label.split(" ")[0]}
+                    {config.label.split(" ")[0]} {count > 0 ? `(${count})` : ""}
                   </button>
                 );
               })}
@@ -307,12 +368,12 @@ export function MemoryDashboard({
                     <p className="text-xs max-w-xs mt-1.5 leading-relaxed font-mono">
                       {activeTab === "all" 
                         ? "Start talking aloud with Bella! Her background consolidator analyzes transcript slices and builds a life context naturally."
-                        : `No persistent recollections saved in Category "${categoryConfig[activeTab as MemoryCategory]?.label}". Add one or speak with Bella.`}
+                        : `No persistent recollections saved in Category "${getCategoryConfig(activeTab).label}". Add one or speak with Bella.`}
                     </p>
                   </motion.div>
                 ) : (
                   filteredMemories.map((m) => {
-                    const cfg = categoryConfig[m.category];
+                    const cfg = getCategoryConfig(m.category);
                     const Icon = cfg.icon;
 
                     return (

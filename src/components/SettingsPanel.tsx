@@ -339,7 +339,7 @@ export function SettingsPanel({
   const [submittingMemory, setSubmittingMemory] = useState(false);
 
   // Category Configuration for Recalls
-  const categoryConfig: Record<MemoryCategory, { label: string; icon: any; color: string; bg: string }> = {
+  const categoryConfig: Record<string, { label: string; icon: any; color: string; bg: string }> = {
     identity: { 
       label: "Identity", 
       icon: User, 
@@ -364,6 +364,30 @@ export function SettingsPanel({
       color: "text-cyan-400 border-cyan-500/25", 
       bg: "bg-cyan-500/5 hover:bg-cyan-500/10" 
     },
+    interest: { 
+      label: "Interests", 
+      icon: Sparkles, 
+      color: "text-purple-400 border-purple-500/25", 
+      bg: "bg-purple-500/5 hover:bg-purple-500/10" 
+    },
+    learning: { 
+      label: "Learning", 
+      icon: Sparkles, 
+      color: "text-blue-400 border-blue-500/25", 
+      bg: "bg-blue-500/5 hover:bg-blue-500/10" 
+    },
+    education: { 
+      label: "Education", 
+      icon: Sparkles, 
+      color: "text-teal-400 border-teal-500/25", 
+      bg: "bg-teal-500/5 hover:bg-teal-500/10" 
+    },
+    tools: { 
+      label: "Tools", 
+      icon: Briefcase, 
+      color: "text-amber-300 border-amber-400/25", 
+      bg: "bg-amber-400/5 hover:bg-amber-400/10" 
+    },
     relationship: { 
       label: "Relationships", 
       icon: Users, 
@@ -382,6 +406,16 @@ export function SettingsPanel({
       color: "text-indigo-400 border-indigo-500/25", 
       bg: "bg-indigo-500/5 hover:bg-indigo-500/10" 
     },
+  };
+
+  const getCategoryConfig = (cat?: string) => {
+    if (cat && categoryConfig[cat]) return categoryConfig[cat];
+    return {
+      label: cat ? cat.charAt(0).toUpperCase() + cat.slice(1) : "General",
+      icon: Brain,
+      color: "text-cyan-400 border-cyan-500/25",
+      bg: "bg-cyan-500/5 hover:bg-cyan-500/10"
+    };
   };
 
   // Enumerate microphones (mirrors how audio.ts grabs getUserMedia).
@@ -728,8 +762,13 @@ export function SettingsPanel({
                       </div>
                     ) : (
                       filteredMemories.map((m) => {
-                        const cfg = categoryConfig[m.category] || categoryConfig.identity;
+                        const cfg = getCategoryConfig(m.category);
                         const CategoryIcon = cfg.icon;
+                        const dateLabel = m.createdAt ? (() => {
+                          const d = new Date(m.createdAt);
+                          return isNaN(d.getTime()) ? "Durable" : d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+                        })() : "Durable";
+
                         return (
                           <div
                             key={m.id}
@@ -746,10 +785,7 @@ export function SettingsPanel({
                                       {cfg.label}
                                     </span>
                                     <span className="text-[8px] font-mono text-slate-600">
-                                      {new Date(m.createdAt).toLocaleDateString(undefined, {
-                                        month: "short",
-                                        day: "numeric",
-                                      })}
+                                      {dateLabel}
                                     </span>
                                   </div>
                                   <p className="text-xs font-sans text-slate-200 leading-relaxed break-words">
