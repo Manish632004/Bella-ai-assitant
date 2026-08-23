@@ -22,6 +22,7 @@ import {
   generateText, generateJson, fetchText, fetchJson, runCommand, announce,
   HOME, ensureDir, readJson, writeJson, dataFilePath,
 } from "./util";
+import { getCurrentApiKey } from "./util";
 import { dispatchTool } from "./runtime";
 import type { ToolModule } from "./types";
 
@@ -193,7 +194,7 @@ async function runGenericAgent(job: AgentJob, extraContext = ""): Promise<void> 
   const MAX_STEPS = 12;
   let transcript = "";
   for (let i = 0; i < MAX_STEPS; i++) {
-    const apiKey = require("../server_paths").getGeminiApiKey();
+    const apiKey = getCurrentApiKey();
     const decision = await generateJson<{
       action: string; tool?: string; args?: Record<string, unknown>;
       path?: string; content?: string; command?: string; cwd?: string; url?: string;
@@ -240,7 +241,7 @@ async function runGenericAgent(job: AgentJob, extraContext = ""): Promise<void> 
 // Research deep dive
 // ---------------------------------------------------------------------------
 async function runResearchAgent(job: AgentJob, exportDocx: boolean): Promise<void> {
-  const apiKey = require("../server_paths").getGeminiApiKey();
+  const apiKey = getCurrentApiKey();
 
   step(job, "Planning research strategy…");
   const plan = await generateJson<{ queries: string[]; outline: string[] }>(
@@ -337,7 +338,7 @@ async function runLongCapture(cmd: string, cwd: string, onLine: (l: string) => v
 interface CodeFile { path: string; content: string; }
 
 async function manishCodeBuild(job: AgentJob, spec: string, projectNameHint?: string): Promise<string> {
-  const apiKey = require("../server_paths").getGeminiApiKey();
+  const apiKey = getCurrentApiKey();
   const projectsRoot = ensureDir(path.join(HOME(), "BellaProjects"));
 
   const lessons = loadLessons();

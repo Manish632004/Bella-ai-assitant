@@ -7,6 +7,7 @@
  */
 import { Type } from "@google/genai";
 import { generateJson } from "./util";
+import { getCurrentApiKey } from "./util";
 import type { ToolModule, BellaToolContext } from "./types";
 
 export interface WbElement {
@@ -111,7 +112,7 @@ export const whiteboardModule: ToolModule = {
         if (args.openIfClosed !== false) send(ctx, { type: "whiteboard_open", topic });
         let plan: { elements: WbElement[]; narration?: string };
         try {
-          const apiKey = require("../server_paths").getGeminiApiKey();
+          const apiKey = ctx.apiKey || getCurrentApiKey() || "";
           plan = await generateJson<{ elements: WbElement[]; narration?: string }>(
             apiKey,
             `Concept to visualize on a whiteboard: "${topic}"`,

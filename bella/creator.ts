@@ -16,6 +16,7 @@ import { Type } from "@google/genai";
 import {
   readJson, writeJson, dataFilePath, announce, analyzeImage, generateText,
 } from "./util";
+import { getCurrentApiKey } from "./util";
 import type { ToolModule } from "./types";
 
 // ===========================================================================
@@ -284,7 +285,7 @@ export const creatorModule: ToolModule = {
           "commentThreads", { part: "snippet", videoId, order: "relevance", maxResults: "50", textFormat: "plainText" });
         const comments = t.items?.map(i => i.snippet.topLevelComment.snippet.textDisplay).slice(0, 60) || [];
         if (!comments.length) return { result: "That video has no comments yet." };
-        const apiKey = require("../server_paths").getGeminiApiKey();
+        const apiKey = getCurrentApiKey();
         const sentiment = await generateText(
           apiKey,
           `Analyze these YouTube comments. Reply with: overall sentiment %, top 3 recurring themes, 2 representative quotes.\n\n${comments.join("\n- ")}`,

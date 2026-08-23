@@ -13,6 +13,7 @@ import {
   readJson, writeJson, dataFilePath, ensureDir, runCommand, fetchText,
   generateJson, HOME,
 } from "./util";
+import { getCurrentApiKey } from "./util";
 import type { ToolModule } from "./types";
 
 const SKILLS_ROOT = ensureDir(dataFilePath("skills"));
@@ -85,7 +86,7 @@ async function findPython(): Promise<string | null> {
 }
 
 async function generateAndInstall(description: string, nameHint?: string, previousError?: string): Promise<{ manifest: SkillManifest; testOutput: string }> {
-  const apiKey = require("../server_paths").getGeminiApiKey();
+  const apiKey = getCurrentApiKey();
   for (let attempt = 0; attempt < 2; attempt++) {
     const gen = await generateJson<{ name: string; description: string; kind: "python" | "prompt"; content: string }>(
       apiKey,

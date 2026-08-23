@@ -248,6 +248,17 @@ export function createPdfBytes(title: string, sections: { heading?: string; body
 // ---------------------------------------------------------------------------
 const FLASH_MODEL = process.env.BELLA_FLASH_MODEL || "gemini-flash-latest";
 
+/**
+ * Pool-resolved API key snapshot. server.ts refreshes this on every live
+ * connection (updateBellaCtx) so background engines (agents, scheduler,
+ * skills) always have a working key without circular imports.
+ */
+let currentApiKey = "";
+export function setCurrentApiKey(key: string): void { currentApiKey = key || currentApiKey; }
+export function getCurrentApiKey(): string {
+  return currentApiKey || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "";
+}
+
 export function makeClient(apiKey: string): GoogleGenAI {
   return new GoogleGenAI({ apiKey });
 }

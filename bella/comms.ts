@@ -18,6 +18,7 @@ import { Type } from "@google/genai";
 import {
   readJson, writeJson, generateJson, runCommand, resolveUserPath, dataFilePath, HOME,
 } from "./util";
+import { getCurrentApiKey } from "./util";
 import { dispatchTool } from "./runtime";
 import type { ToolModule } from "./types";
 
@@ -654,7 +655,7 @@ export const expensesModule: ToolModule = {
         for (let i = 0; i < mails.length; i += 6) {
           const batch = mails.slice(i, i + 6);
           try {
-            const apiKey = require("../server_paths").getGeminiApiKey();
+            const apiKey = getCurrentApiKey();
             const extracted = await generateJson<{ transactions: Omit<Expense, "id">[] }>(
               apiKey,
               `Extract financial TRANSACTIONS (money the user PAID — debits/purchases/orders; ignore credits/refunds/salary) from these emails. Return {"transactions":[{"date":"YYYY-MM-DD","amount":123.45,"currency":"INR","merchant":"...","category":"food|travel|shopping|utilities|entertainment|health|other","description":"short"}]}.\n\nEMAILS:\n` +

@@ -24,6 +24,7 @@ import { updaterModule } from "./updater";
 import { whiteboardModule } from "./whiteboard";
 import { setDispatcher } from "./runtime";
 import { recordStep, isRecording } from "./macros";
+import { setCurrentApiKey } from "./util";
 
 const MODULES: ToolModule[] = [
   personasModule,
@@ -86,6 +87,7 @@ export function registerFullExecutor(fn: FullExecutor): void {
 }
 export function updateBellaCtx(ctx: Partial<BellaToolContext>): void {
   lastCtx = { ...lastCtx, ...ctx };
+  if (ctx.apiKey) setCurrentApiKey(ctx.apiKey);
 }
 
 setDispatcher(async (name, args) => {
