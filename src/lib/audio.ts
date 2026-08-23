@@ -402,6 +402,8 @@ export class BellaAudioSession {
             "recorder_start", "recorder_pause", "recorder_resume", "recorder_stop",
             "guardian_enroll", "persona_changed", "persona_info", "hud_move",
             "hud_visibility", "macro_recording", "key_failover",
+            "whiteboard_open", "whiteboard_draw", "whiteboard_clear",
+            "whiteboard_save", "whiteboard_close",
           ]);
           if (BELLA_6_EVENTS.has(data.type) && this.onBellaEvent) {
             this.onBellaEvent(data);
