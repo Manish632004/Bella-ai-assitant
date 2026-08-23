@@ -22,12 +22,14 @@ import {
   Compass,
   RotateCcw,
   Key,
+  Wand2,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { BellaSettings } from "../lib/settingsStore";
 import { Memory, MemoryCategory } from "../lib/memoryTypes";
 import { ProactiveSettings, ProactiveLevel } from "../../proactive/types";
 import { GeminiKeyPoolManager } from "./keys/GeminiKeyPoolManager";
+import { BellaSixSettings } from "./settings/BellaSixSettings";
 
 interface SettingsPanelProps {
   isOpen: boolean;
@@ -51,7 +53,7 @@ interface SettingsPanelProps {
   onResetProactiveFeedback?: () => void;
 }
 
-type SettingsTab = "general" | "keys" | "proactive" | "recalls" | "voice" | "system" | "about";
+type SettingsTab = "general" | "bella60" | "keys" | "proactive" | "recalls" | "voice" | "system" | "about";
 
 /** A single toggle row matching the existing switch style. */
 function ToggleRow({
@@ -482,6 +484,7 @@ export function SettingsPanel({
 
   const tabs: { id: SettingsTab; label: string; icon: any }[] = [
     { id: "general", label: "GENERAL", icon: Power },
+    { id: "bella60", label: "BELLA 6.0", icon: Wand2 },
     { id: "keys", label: "GEMINI KEYS", icon: Key },
     { id: "proactive", label: "PROACTIVE AI", icon: Compass },
     { id: "recalls", label: "RECALLS", icon: Brain },
@@ -583,6 +586,11 @@ export function SettingsPanel({
 
             {/* Scrollable content area */}
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              {/* ---------------- BELLA 6.0 ---------------- */}
+              {activeTab === "bella60" && (
+                <BellaSixSettings />
+              )}
+
               {/* ---------------- GENERAL ---------------- */}
               {activeTab === "general" && (
                 <div className="space-y-4">

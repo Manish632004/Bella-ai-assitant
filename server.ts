@@ -49,7 +49,8 @@ import {
   startBellaServices,
   bellaToolCount,
 } from "./bella";
-import { getActivePersona, resolveVoice } from "./bella/personas";
+import { getActivePersona, resolveVoice, listPersonas, setActivePersona } from "./bella/personas";
+import { readJson } from "./bella/util";
 import { promptSkillsBlock } from "./bella/skills";
 import {
   identifySpeaker,
@@ -1657,6 +1658,43 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
   app.get("/api/bella/stats", (_req, res) => {
     res.json({ tools: bellaToolCount, guestMode: isGuestMode(), lastSpeaker: getLastSpeaker() });
   });
+
+  // --- BELLA 6.0 Settings-panel endpoints ---
+  app.get("/api/bella/personas", (_req, res) => {
+    try {
+      const active = getActivePersona();
+      res.json({
+        active: active.id,
+        personas: listPersonas().map(p => ({ id: p.id, name: p.name, theme: p.theme, voice: resolveVoice(p) })),
+      });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post("/api/bella/persona", express.json(), async (req, res) => {
+    try {
+      const persona = setActivePersona(String(req.body?.persona || "bella"));
+      res.json({ ok: true, persona: persona.id, name: persona.name, voice: resolveVoice(persona), theme: (persona as any).theme });
+    } catch (e: any) { res.status(400).json({ error: e.message }); }
+  });
+
+  app.get("/api/email/status", (_req, res) => {
+    try {
+      const cfg = readJson<any | null>(dataFile("mail.json"), null);
+      res.json({ configured: !!cfg?.address, address: cfg?.address || "" });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post("/api/email/configure", express.json(), async (req, res) => {
+    try {
+      const output = await executeBellaTool("configureEmail", {
+        email: String(req.body?.email || ""),
+        appPassword: String(req.body?.appPassword || ""),
+      }, { apiKey: getGeminiApiKey() || "", clientWs: null, sessionId: "settings" });
+      res.json(output as any);
+    } catch (e: any) { res.status(400).json({ error: e.message }); }
+  });
+
+  // --- BELLA 6.0 Settings-panel endpoints end ---
 
   // ---------------------------------------------------------------------------
   // Gemini API Key Pool & Automatic Failover Endpoints

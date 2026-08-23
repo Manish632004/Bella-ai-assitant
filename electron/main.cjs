@@ -183,6 +183,23 @@ ipcMain.on('window-close', () => {
   if (mainWindow) mainWindow.close();
 });
 
+// BELLA 6.0 — persist whiteboard PNGs from the renderer to disk
+ipcMain.handle('save-image', async (_event, arrayBuffer, fileName) => {
+  try {
+    const pathMod = require('path');
+    const fsMod = require('fs');
+    const dir = pathMod.join(require('os').homedir(), 'Pictures', 'BellaBoards');
+    fsMod.mkdirSync(dir, { recursive: true });
+    const safeName = String(fileName || `whiteboard-${Date.now()}.png`).replace(/[\\/:*?"<>|]/g, '-');
+    const dest = pathMod.join(dir, safeName);
+    fsMod.writeFileSync(dest, Buffer.from(arrayBuffer));
+    return { ok: true, path: dest };
+  } catch (err) {
+    console.error('[Image Save Error]:', err);
+    return { ok: false, error: err.message };
+  }
+});
+
 // IPC Handler to query screen and window capture sources
 ipcMain.handle('get-desktop-sources', async () => {
   try {

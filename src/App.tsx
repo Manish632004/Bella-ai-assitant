@@ -40,6 +40,7 @@ import { ProactiveSettings, ProactiveSuggestion } from "../proactive/types";
 import { PersonalAIDashboard } from "./components/dashboard/PersonalAIDashboard";
 import { CommandPalette } from "./components/dashboard/CommandPalette";
 import { CameraVisionWidget } from "./components/vision/CameraVisionWidget";
+import { Whiteboard, type WbElement } from "./components/Whiteboard";
 
 export default function App() {
   const [state, setState] = useState<LiveState>("disconnected");
@@ -470,6 +471,17 @@ export default function App() {
   }, []);
 
   // ===========================================================================
+  // BELLA 6.0 — Whiteboard & study engine
+  // ===========================================================================
+  const [wbOpen, setWbOpen] = useState(false);
+  const [wbTopic, setWbTopic] = useState("");
+  const [wbPending, setWbPending] = useState<WbElement | null>(null);
+  const [wbDrawSignal, setWbDrawSignal] = useState(0);
+  const [wbClearSignal, setWbClearSignal] = useState(0);
+  const [wbSaveSignal, setWbSaveSignal] = useState(0);
+  const [wbSaveName, setWbSaveName] = useState("");
+
+  // ===========================================================================
   // BELLA 6.0 — capability-layer WS events dispatcher
   // ===========================================================================
   const activePersonaIdRef = useRef<string | null>(null);
@@ -486,6 +498,18 @@ export default function App() {
       }
     }, 1200);
   }, []);
+
+  // Settings-panel → HUD bridges (BELLA 6.0 tab)
+  useEffect(() => {
+    const onEnroll = () => void runGuardianEnrollment();
+    const onReconnect = () => reconnectForPersona();
+    window.addEventListener("bella:guardian-enroll", onEnroll);
+    window.addEventListener("bella:reconnect-persona", onReconnect);
+    return () => {
+      window.removeEventListener("bella:guardian-enroll", onEnroll);
+      window.removeEventListener("bella:reconnect-persona", onReconnect);
+    };
+  }, [runGuardianEnrollment, reconnectForPersona]);
 
   const handleBellaEvent = useCallback((event: { type: string } & Record<string, any>) => {
     console.log("[Bella 6.0 Event]", event.type, event);
@@ -509,6 +533,24 @@ export default function App() {
         if ((window as any).bella?.setHudVisibility) {
           (window as any).bella.setHudVisibility(!!event.visible);
         }
+        break;
+      case "whiteboard_open":
+        setWbTopic(String(event.topic || ""));
+        setWbOpen(true);
+        break;
+      case "whiteboard_draw":
+        setWbPending(event.element || null);
+        setWbDrawSignal(s => s + 1);
+        break;
+      case "whiteboard_clear":
+        setWbClearSignal(s => s + 1);
+        break;
+      case "whiteboard_save":
+        setWbSaveName(String(event.name || "whiteboard"));
+        setWbSaveSignal(s => s + 1);
+        break;
+      case "whiteboard_close":
+        setWbOpen(false);
         break;
       case "persona_changed":
         // Explicit voice switch — always applies via reconnect.
@@ -1861,6 +1903,18 @@ export default function App() {
           />
         </div>
       )}
+
+      {/* BELLA 6.0 — Whiteboard & study overlay */}
+      <Whiteboard
+        open={wbOpen}
+        topic={wbTopic}
+        onClose={() => setWbOpen(false)}
+        clearSignal={wbClearSignal}
+        drawSignal={wbDrawSignal}
+        pendingElement={wbPending}
+        saveSignal={wbSaveSignal}
+        saveName={wbSaveName}
+      />
 
       {/* Recollections sliding core panel */}
       <MemoryDashboard

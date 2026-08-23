@@ -21,6 +21,7 @@ import { extrasModule, startClipboardWatcher } from "./extras";
 import { skillsModule } from "./skills";
 import { guardianModule } from "./guardian";
 import { updaterModule } from "./updater";
+import { whiteboardModule } from "./whiteboard";
 import { setDispatcher } from "./runtime";
 import { recordStep, isRecording } from "./macros";
 
@@ -39,6 +40,7 @@ const MODULES: ToolModule[] = [
   skillsModule,
   guardianModule,
   updaterModule,
+  whiteboardModule,
 ];
 
 export const bellaDeclarations: FunctionDeclaration[] =
