@@ -8,7 +8,7 @@ export class DesktopBridge {
 
   public static async call(tool: string, args: Record<string, unknown> = {}): Promise<{ ok: boolean; result?: any; error?: string }> {
     try {
-      const res = await fetch(`${this.baseUrl}/run`, {
+      const res = await fetch(`${this.baseUrl}/execute`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tool, args }),

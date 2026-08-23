@@ -98,6 +98,8 @@ export class BellaAudioSession {
 
   private onProactiveInit?: (settings: any, suggestions: any[]) => void;
   private onProactiveSuggestion?: (suggestion: any) => void;
+  // BELLA 6.0 — capability layer events (recorder, guardian, personas, HUD…)
+  private onBellaEvent?: (event: { type: string } & Record<string, any>) => void;
 
   constructor(handlers: {
     onStateChange: (state: LiveState) => void;
@@ -112,6 +114,7 @@ export class BellaAudioSession {
     onCameraModeChange?: (mode: string) => void;
     onProactiveInit?: (settings: any, suggestions: any[]) => void;
     onProactiveSuggestion?: (suggestion: any) => void;
+    onBellaEvent?: (event: { type: string } & Record<string, any>) => void;
   }, sessionId?: string) {
     this.sessionId = sessionId || `bella_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     this.onStateChange = handlers.onStateChange;
@@ -126,6 +129,7 @@ export class BellaAudioSession {
     this.onCameraModeChange = handlers.onCameraModeChange;
     this.onProactiveInit = handlers.onProactiveInit;
     this.onProactiveSuggestion = handlers.onProactiveSuggestion;
+    this.onBellaEvent = handlers.onBellaEvent;
   }
 
   private setState(state: LiveState) {
@@ -391,6 +395,16 @@ export class BellaAudioSession {
                 }));
               }
             });
+          }
+
+          // BELLA 6.0 — capability layer events
+          const BELLA_6_EVENTS = new Set([
+            "recorder_start", "recorder_pause", "recorder_resume", "recorder_stop",
+            "guardian_enroll", "persona_changed", "persona_info", "hud_move",
+            "hud_visibility", "macro_recording", "key_failover",
+          ]);
+          if (BELLA_6_EVENTS.has(data.type) && this.onBellaEvent) {
+            this.onBellaEvent(data);
           }
 
         } catch (parseError) {

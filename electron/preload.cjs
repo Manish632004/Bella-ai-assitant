@@ -24,4 +24,9 @@ contextBridge.exposeInMainWorld('bella', {
   closeWindow: () => ipcRenderer.send('window-close'),
   // Screen sharing source discovery
   getDesktopSources: () => ipcRenderer.invoke('get-desktop-sources'),
+  // BELLA 6.0 — screen recorder persistence (dialog + fs in main)
+  saveRecording: (arrayBuffer, fileName) => ipcRenderer.invoke('save-recording', arrayBuffer, fileName),
+  // BELLA 6.0 — voice HUD control
+  positionHudCorner: (corner) => ipcRenderer.send('position-hud-corner', corner),
+  setHudVisibility: (visible) => ipcRenderer.send('set-hud-visibility', visible),
 });

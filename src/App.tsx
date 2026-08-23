@@ -278,6 +278,213 @@ export default function App() {
     await startScreenSharing();
   };
 
+  // ===========================================================================
+  // BELLA 6.0 — Screen Recorder (voice-controlled, saved to ~/Videos/BellaRecordings)
+  // ===========================================================================
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const recorderChunksRef = useRef<Blob[]>([]);
+  const recorderStreamRef = useRef<MediaStream | null>(null);
+  const [isRecordingScreen, setIsRecordingScreen] = useState(false);
+
+  const startScreenRecording = async () => {
+    try {
+      if (recorderRef.current) return;
+      let stream: MediaStream | null = null;
+      if (navigator.mediaDevices?.getDisplayMedia) {
+        stream = await navigator.mediaDevices.getDisplayMedia({
+          video: { frameRate: { ideal: 30 } },
+          audio: false,
+        });
+      }
+      if (!stream && screenStreamRef.current) {
+        // Reuse the active vision stream if the user declines the picker
+        stream = new MediaStream(screenStreamRef.current.getVideoTracks());
+      }
+      if (!stream) throw new Error("No display source available for recording.");
+
+      recorderStreamRef.current = stream;
+      recorderChunksRef.current = [];
+      const mimeCandidates = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"];
+      const mimeType = mimeCandidates.find(m => MediaRecorder.isTypeSupported?.(m)) || "";
+      const rec = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      rec.ondataavailable = (e) => { if (e.data.size > 0) recorderChunksRef.current.push(e.data); };
+      rec.onstop = async () => {
+        const blob = new Blob(recorderChunksRef.current, { type: "video/webm" });
+        recorderChunksRef.current = [];
+        const fileName = `bella-recording-${new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19)}.webm`;
+        try {
+          if ((window as any).bella?.saveRecording) {
+            const buf = await blob.arrayBuffer();
+            const res = await (window as any).bella.saveRecording(buf, fileName);
+            console.log("[Recorder] Saved:", res.path);
+          } else {
+            // Browser dev fallback: trigger a download
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = fileName;
+            a.click();
+            URL.revokeObjectURL(url);
+          }
+        } catch (err) {
+          console.error("[Recorder] save failed:", err);
+        }
+        stream?.getTracks().forEach(t => { try { t.stop(); } catch {} });
+        recorderRef.current = null;
+        recorderStreamRef.current = null;
+        setIsRecordingScreen(false);
+      };
+      rec.start(1000);
+      recorderRef.current = rec;
+      setIsRecordingScreen(true);
+    } catch (err: any) {
+      console.error("[Recorder] start failed:", err);
+      setErrorText(`Recording failed to start: ${err.message || err}`);
+    }
+  };
+
+  const stopScreenRecording = () => {
+    if (recorderRef.current && recorderRef.current.state !== "inactive") {
+      recorderRef.current.stop();
+    } else {
+      setIsRecordingScreen(false);
+    }
+  };
+
+  const pauseScreenRecording = () => {
+    if (recorderRef.current?.state === "recording") recorderRef.current.pause();
+  };
+
+  const resumeScreenRecording = () => {
+    if (recorderRef.current?.state === "paused") recorderRef.current.resume();
+  };
+
+  // ===========================================================================
+  // BELLA 6.0 — Voice Guardian enrollment (record 3 "Hey Bella" samples)
+  // ===========================================================================
+  const runGuardianEnrollment = useCallback(async () => {
+    const encodeWav = (buffer: AudioBuffer): string => {
+      const numCh = buffer.numberOfChannels;
+      const len = buffer.length;
+      const sampleRate = buffer.sampleRate;
+      const bytes = new DataView(new ArrayBuffer(44 + len * numCh * 2));
+      const wstr = (off: number, s: string) => { for (let i = 0; i < s.length; i++) bytes.setUint8(off + i, s.charCodeAt(i)); };
+      wstr(0, "RIFF"); bytes.setUint32(4, 36 + len * numCh * 2, true); wstr(8, "WAVE");
+      wstr(12, "fmt "); bytes.setUint32(16, 16, true); bytes.setUint16(20, 1, true);
+      bytes.setUint16(22, numCh, true); bytes.setUint32(24, sampleRate, true);
+      bytes.setUint32(28, sampleRate * numCh * 2, true); bytes.setUint16(32, numCh * 2, true);
+      bytes.setUint16(34, 16, true); wstr(36, "data"); bytes.setUint32(40, len * numCh * 2, true);
+      let off = 44;
+      for (let i = 0; i < len; i++) {
+        for (let ch = 0; ch < numCh; ch++) {
+          const s = Math.max(-1, Math.min(1, buffer.getChannelData(ch)[i]));
+          bytes.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+          off += 2;
+        }
+      }
+      let binary = "";
+      const arr = new Uint8Array(bytes.buffer);
+      for (let i = 0; i < arr.length; i++) binary += String.fromCharCode(arr[i]);
+      return btoa(binary);
+    };
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const samples: string[] = [];
+      const ctx = new AudioContext();
+      for (let i = 0; i < 3; i++) {
+        const recorder = new MediaRecorder(stream);
+        const chunks: Blob[] = [];
+        recorder.ondataavailable = e => chunks.push(e.data);
+        const done = new Promise<void>(resolve => { recorder.onstop = () => resolve(); });
+        recorder.start();
+        await new Promise(r => setTimeout(r, 1800)); // ~1.8s of speech per sample
+        recorder.stop();
+        await done;
+        const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
+        const ab = await blob.arrayBuffer();
+        // Decode & re-encode as WAV PCM16 so the server fingerprinter can parse it
+        const audioBuf = await ctx.decodeAudioData(ab.slice(0));
+        samples.push(encodeWav(audioBuf));
+      }
+      stream.getTracks().forEach(t => { try { t.stop(); } catch {} });
+      ctx.close();
+      const res = await fetch("/api/guardian/enroll", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ samples }),
+      });
+      const json = await res.json();
+      console.log("[Guardian] Enrollment result:", json);
+    } catch (err: any) {
+      console.error("[Guardian] enrollment failed:", err);
+      setErrorText(`Voice enrollment failed: ${err.message || err}`);
+    }
+  }, []);
+
+  // ===========================================================================
+  // BELLA 6.0 — capability-layer WS events dispatcher
+  // ===========================================================================
+  const activePersonaIdRef = useRef<string | null>(null);
+
+  const reconnectForPersona = useCallback(() => {
+    setTimeout(() => {
+      if (sessionRef.current && sessionRef.current.getState() !== "disconnected") {
+        console.log("[Bella 6.0] Reconnecting live session so the new persona voice applies.");
+        sessionRef.current.disconnect();
+        setTimeout(() => {
+          setSleepReason("none");
+          sessionRef.current?.connect();
+        }, 700);
+      }
+    }, 1200);
+  }, []);
+
+  const handleBellaEvent = useCallback((event: { type: string } & Record<string, any>) => {
+    console.log("[Bella 6.0 Event]", event.type, event);
+    switch (event.type) {
+      case "recorder_start": void startScreenRecording(); break;
+      case "recorder_stop": stopScreenRecording(); break;
+      case "recorder_pause": pauseScreenRecording(); break;
+      case "recorder_resume": resumeScreenRecording(); break;
+      case "guardian_enroll": void runGuardianEnrollment(); break;
+      case "hud_move":
+        if ((window as any).bella?.positionHudCorner) {
+          const where = String(event.where || "");
+          if (/left/.test(where)) (window as any).bella.positionHudCorner(/top/.test(where) ? "top-left" : "bottom-left");
+          else if (/right/.test(where)) (window as any).bella.positionHudCorner(/top/.test(where) ? "top-right" : "bottom-right");
+          else if (/center|middle/.test(where)) (window as any).bella.positionHudCorner("center");
+          else if (/top/.test(where)) (window as any).bella.positionHudCorner("top-right");
+          else (window as any).bella.positionHudCorner("bottom-right");
+        }
+        break;
+      case "hud_visibility":
+        if ((window as any).bella?.setHudVisibility) {
+          (window as any).bella.setHudVisibility(!!event.visible);
+        }
+        break;
+      case "persona_changed":
+        // Explicit voice switch — always applies via reconnect.
+        if (event.theme) setThemeColor(String(event.theme));
+        activePersonaIdRef.current = String(event.persona || "");
+        reconnectForPersona();
+        break;
+      case "persona_info":
+        // Server announces the active persona on EVERY connect. Only
+        // reconnect if it genuinely differs from the one this session uses.
+        if (event.theme) setThemeColor(String(event.theme));
+        if (activePersonaIdRef.current === null) {
+          // First announcement of this app run — adopt it silently.
+          activePersonaIdRef.current = String(event.persona || "");
+        } else if (String(event.persona || "") !== activePersonaIdRef.current) {
+          activePersonaIdRef.current = String(event.persona || "");
+          reconnectForPersona();
+        }
+        break;
+      default:
+        break;
+    }
+  }, [runGuardianEnrollment, reconnectForPersona]);
+
   const [activeEmotion, setActiveEmotion] = useState<BellaEmotion>("idle");
   const [themeColor, setThemeColor] = useState<string>("charcoal");
   const [userCaption, setUserCaption] = useState<string>("");
@@ -339,6 +546,29 @@ export default function App() {
       lower.includes("shut off camera")
     ) {
       setShowCameraVision(false);
+    }
+
+    // BELLA 6.0 — "so jao": hands-free sleep; wake word re-activates her
+    if (
+      /\bso jao\b/.test(lower) ||
+      lower.includes("go to sleep") ||
+      lower.includes("sleep now bella") ||
+      lower.includes("bella sleep") ||
+      lower.includes("goodnight bella") ||
+      lower.includes("good night bella")
+    ) {
+      console.log("[Bella 6.0] Sleep command received ('so jao').");
+      setSleepReason("auto"); // auto standby keeps the offline wake word armed
+      if (sessionRef.current && sessionRef.current.getState() !== "disconnected") {
+        sessionRef.current.disconnect();
+      }
+    }
+
+    // BELLA 6.0 — hide/show her own window by voice
+    if (/(hide yourself|hide your window|hide hud|hide the window)/.test(lower)) {
+      (window as any).bella?.setHudVisibility?.(false);
+    } else if (/(show yourself|come back|unhide|show your window|show hud)/.test(lower)) {
+      (window as any).bella?.setHudVisibility?.(true);
     }
   }, [userCaption]);
 
@@ -514,6 +744,26 @@ export default function App() {
       det.stop();
     }
   }, [settings.wakeWordEnabled, settings.wakePhrase, settings.sensitivity, state, sleepReason]);
+
+  // BELLA 6.0 — Phone Link: let the paired Android wake Bella from across the
+  // house while she is in auto-sleep standby.
+  useEffect(() => {
+    if (state !== "disconnected" || sleepReason !== "auto") return;
+    const timer = setInterval(async () => {
+      try {
+        const res = await fetch("/api/phone/wake-request");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.wake) {
+            console.log("[Phone Link] Wake requested from paired phone.");
+            setSleepReason("none");
+            connectHandlerRef.current();
+          }
+        }
+      } catch { /* offline / not paired */ }
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [state, sleepReason]);
 
   // Handle settings changes: persist to localStorage + update state.
   const handleSettingsChange = (patch: Partial<BellaSettings>) => {
@@ -805,7 +1055,8 @@ export default function App() {
         console.log("[App] New proactive suggestion received:", suggestion);
         setProactiveSuggestions((prev) => [suggestion, ...prev.filter((s) => s.id !== suggestion.id)]);
         setActiveSuggestion(suggestion);
-      }
+      },
+      onBellaEvent: handleBellaEvent
     });
 
     return () => {

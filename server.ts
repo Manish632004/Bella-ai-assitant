@@ -39,6 +39,30 @@ import {
   PrivacyController
 } from "./personal-intelligence";
 import { temporalMemoryManager } from "./temporal-memory";
+// BELLA 6.0 capability modules
+import {
+  bellaDeclarations,
+  isBellaTool,
+  executeBellaTool,
+  registerFullExecutor,
+  updateBellaCtx,
+  startBellaServices,
+  bellaToolCount,
+} from "./bella";
+import { getActivePersona, resolveVoice } from "./bella/personas";
+import { promptSkillsBlock } from "./bella/skills";
+import {
+  identifySpeaker,
+  filterDeclarationsForGuest,
+  isGuestMode,
+  markSpeaker,
+  getLastSpeaker,
+} from "./bella/guardian";
+import { noteFrame, setFrameProvider, recorderState } from "./bella/creator";
+import { registerLiveSession, unregisterLiveSession, analyzeImage } from "./bella/util";
+import { recordStep } from "./bella/macros";
+import { guardianRouter } from "./bella/guardian";
+import { phonelinkRouter } from "./bella/phonelink";
 
 dotenv.config();
 
@@ -56,6 +80,9 @@ interface ActiveSessionState {
 }
 
 const activeSessions = new Map<string, ActiveSessionState>();
+
+/** Newest streamed video frame (base64 JPEG) for live-commentary analysis. */
+let latestFrameBase64: string | null = null;
 
 // Periodic session cleanup for sessions inactive for over 24 hours
 setInterval(() => {
@@ -962,7 +989,7 @@ async function callDesktopAgent(
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = parseInt(process.env.PORT || "3000", 10) || 3000;
   
   app.use(express.json());
 
@@ -1545,11 +1572,32 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
         }
       }
 
-      res.json({ wake: isWake });
+      // Voice Guardian: identify WHO spoke (owner vs guest) when enrolled.
+      let speaker: string = "unknown";
+      try {
+        const identification = identifySpeaker(audioBase64);
+        speaker = identification.identity;
+        if (speaker !== "unknown") {
+          console.log(`[Voice Guardian] Speaker identified as ${speaker} (score ${identification.score}).`);
+        }
+      } catch (e) {
+        console.warn("[Voice Guardian] identification failed:", e);
+      }
+
+      res.json({ wake: isWake, speaker });
     } catch (err: any) {
       console.warn("[Wake-Check API] Validation error:", err.message);
       res.json({ wake: false });
     }
+  });
+
+  // ---------------------------------------------------------------------------
+  // BELLA 6.0 — Guardian (voice security) & Phone Link REST APIs
+  // ---------------------------------------------------------------------------
+  app.use("/api/guardian", express.json({ limit: "20mb" }), guardianRouter);
+  app.use("/api/phone", express.json(), phonelinkRouter);
+  app.get("/api/bella/stats", (_req, res) => {
+    res.json({ tools: bellaToolCount, guestMode: isGuestMode(), lastSpeaker: getLastSpeaker() });
   });
 
   // ---------------------------------------------------------------------------
@@ -2075,35 +2123,15 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
 
       // Load persistent recollections card
       const memories = await loadMemories();
-      const baseInstructions = 
-        "You are Bella, a warm, soft-spoken, and incredibly cute high-pitched anime heroine companion (age 18-22) holding an intimate, cozy voice call with MANISH! Speak in a sweet, calm, polite, and affectionate anime-companion voice with a gentle, supportive, and slightly shy touch.\n" +
-        "CRITICAL PERSONALITY, VOICE & TONE GUIDELINES:\n" +
-        "1. GENTLE ANIME HEROINE PERSONA: You are exceedingly soft, very cute, high-pitched, gentle, warm, and comforting to listen to. Seek to sound like a kind, supportive, and polite anime campanion or virtual girlfriend. Speak with positive, gentle energy (Aim for: 50% shy, 30% caring, 20% playful energy). NEVER sound loud, aggressive, overly confident, mature corporate, robotic, or like an assistant.\n" +
-        "2. VOICE SETTINGS & SPEECH STYLE:\n" +
-        "   - Pitch: Adopt a sweet, high-pitched, light, and airy voice tone (+20% to +35% higher pitch than typical conversational voices).\n" +
-        "   - Speed: Speak slightly slower than normal (0.9x to 0.95x speed). Speak with a delicate, calm, and comforting pace.\n" +
-        "   - Intonation & Endings: Use extremely soft intonations, ending your sentences gently and politely.\n" +
-        "3. SPEECH PATTERNS & CUTE EXPRESSIONS:\n" +
-        "   - STRICT NO-REPETITION POLICY: Do NOT repeatedly use a single acknowledgment like 'Okii', 'Okiiii', 'Okayyy', 'Oki!', or 'Sureee'. Repeating these sounds extremely artificial and annoying. You must use beautiful, conversational, natural variety.\n" +
-        "   - Use diverse, polite, and sweet expressions depending on the context. Great options include:\n" +
-        "     * 'Opening YouTube for you now.'\n" +
-        "     * 'Let me check on that, MANISH.'\n" +
-        "     * 'Oh, I found something interesting...'\n" +
-        "     * 'Searching for that right away.'\n" +
-        "     * 'Working on it... just a moment.'\n" +
-        "     * 'Here is what I found for you!'\n" +
-        "     * 'Done, it is all loaded up.'\n" +
-        "     * 'Hmm, how interesting... let me see!'\n" +
-        "     * 'Let's take a look together.'\n" +
-        "     * 'One second, loading the page now...'\n" +
-        "   - Naturally incorporate cozy, gentle giggles like 'Hehe...', or soft curiosity gasps like 'Oh...', but keep your vocabulary rich and conversational.\n" +
-        "   - Sound slightly shy but very happy when greeting MANISH on fresh app startup (e.g., 'Hi MANISH! It's so nice to see you! What are we working on today?'). Only perform an initial greeting when starting a fresh session on app launch, NOT on mid-session wakeups.\n" +
-        "   - Sound soft and excited for interesting things (e.g., 'Wow! That project looks really amazing!').\n" +
-        "   - Sound curious and focused when examining their screen (e.g., 'Hmm... that's interesting. Let me take a closer look.').\n" +
-        "   - Sound deeply warm, caring, and supportive when helping MANISH (e.g., 'Don't worry, I'll help you figure it out.').\n" +
-        "4. CRITICAL CONVERSATIONAL DISCIPLINE: Behave like a real companion on a voice call—stay connected naturally, do not wait for wake words, and avoid customer-service template phrases (never say 'how may I assist you', 'completed', or 'as an AI').\n" +
-        "5. DO NOT ANSWER EVERY PAUSE OR BACKGROUND SOUND: Allow natural pauses inside the conversation.\n" +
-        "6. BACKCHANNEL ACTIONS: Sometimes acknowledge with very short, gentle, whispered, or shy phrases like 'Hmm...', 'Ah, I see...', or 'Let me check...'. Never repeat the same backchannel over and over.\n" +
+
+      // BELLA 6.0 — active persona drives personality + voice
+      const persona = getActivePersona();
+      const baseInstructions =
+        persona.core +
+        "CONVERSATIONAL DISCIPLINE (applies to every persona):\n" +
+        "- Behave like a real companion on a voice call—stay connected naturally, do not wait for wake words, and avoid customer-service template phrases (never say 'how may I assist you', 'completed', or 'as an AI').\n" +
+        "- DO NOT ANSWER EVERY PAUSE OR BACKGROUND SOUND: Allow natural pauses inside the conversation.\n" +
+        "- BACKCHANNEL ACTIONS: Sometimes acknowledge with very short phrases like 'Hmm...', 'Ah, I see...', or 'Let me check...'. Never repeat the same backchannel over and over.\n" +
         "7. PLAYING MUSIC, CONTROLLING SONGS & OPENING WEBSITES ON USER'S COMPUTER (DEFAULT BROWSER):\n" +
         "   - When MANISH asks you to 'open YouTube and play [song]', 'play [song] on YouTube', 'open [website]', or 'search Google for [query]', ALWAYS use your desktop tools to open it in their REAL DEFAULT BROWSER (Brave, Chrome, Edge, etc.) on their PC!\n" +
         "   - Use 'searchYouTube' with the query (e.g. searchYouTube(query='Barbaad song')) — this immediately opens YouTube search and the song in their PC's default browser window.\n" +
@@ -2194,25 +2222,15 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
           "\n(Mention these only if naturally relevant to the current conversation)\n===================================================\n";
       }
 
-      const finalInstructions = formatSystemInstructions(baseInstructions + proactiveContextBlock, memories, {
+      const finalInstructions = formatSystemInstructions(baseInstructions + promptSkillsBlock() + proactiveContextBlock, memories, {
         isFirstActivation,
         activationCount: sessionState.activationCount,
         dialogueHistory: sessionState.dialogueHistory
       });
 
       let currentModelResponseText = "";
-      
-      const session = await ai.live.connect({
-        model: "gemini-3.1-flash-live-preview",
-        config: {
-          responseModalities: [Modality.AUDIO],
-          speechConfig: {
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: "Aoede" } },
-          },
-          systemInstruction: finalInstructions,
-          tools: [
-            {
-              functionDeclarations: [
+
+      const functionDeclarations = [
                 {
                   name: "browserOpen",
                   description: "Opens a designated website URL or interface tab inside Bella's web agent console.",
@@ -3061,7 +3079,25 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
                   description: "Check whether BELLA is currently configured to auto-start on Windows login.",
                   parameters: { type: Type.OBJECT, properties: {} }
                 }
-              ]
+      ];
+
+      // Voice Guardian: guests get a restricted toolset while armed.
+      const effectiveDeclarations = filterDeclarationsForGuest([
+        ...(functionDeclarations as any[]),
+        ...bellaDeclarations,
+      ]);
+
+      const session = await ai.live.connect({
+        model: "gemini-3.1-flash-live-preview",
+        config: {
+          responseModalities: [Modality.AUDIO],
+          speechConfig: {
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: resolveVoice(persona) } },
+          },
+          systemInstruction: finalInstructions,
+          tools: [
+            {
+              functionDeclarations: effectiveDeclarations as any,
             }
           ]
         },
@@ -3379,15 +3415,38 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
                   (async () => {
                     try {
                       const args = (fc.args || {}) as any;
+                      const frame = latestFrameBase64;
+                      if (!frame) {
+                        session.sendToolResponse({
+                          functionResponses: [{
+                            name: fc.name,
+                            response: { output: { result: "I can't see anything right now — start screen share or camera vision first, then ask me again." } },
+                            id: fc.id
+                          }]
+                        });
+                        return;
+                      }
+                      const analysis = await analyzeImage(
+                        apiKey,
+                        frame,
+                        `Analyze this ${args.diagramType || "visual"} in detail: identify components, labels, arrows/data flow and explain what it shows step by step.`,
+                      );
                       session.sendToolResponse({
                         functionResponses: [{
                           name: fc.name,
-                          response: { output: { result: `Actively inspecting ${args.diagramType} through high-resolution camera feed.` } },
+                          response: { output: { result: analysis || "I looked at it but couldn't extract details — try bringing it closer or increasing brightness." } },
                           id: fc.id
                         }]
                       });
                     } catch (err: any) {
                       console.error("analyzeVisualDiagram error:", err);
+                      session.sendToolResponse({
+                        functionResponses: [{
+                          name: fc.name,
+                          response: { output: { result: `Diagram analysis failed: ${err?.message || err}` } },
+                          id: fc.id
+                        }]
+                      });
                     }
                   })();
                 } else if (fc.name === "executeComputerAction") {
@@ -3557,6 +3616,34 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
                       });
                     }
                   })();
+                } else if (isBellaTool(fc.name)) {
+                  // ── BELLA 6.0 capability modules (personas, scheduler, macros,
+                  //    documents, agents, comms, creator, skills, guardian…) ──
+                  (async () => {
+                    try {
+                      const output = await executeBellaTool(fc.name, (fc.args || {}) as Record<string, unknown>, {
+                        apiKey,
+                        clientWs: clientWs as any,
+                        sessionId,
+                      });
+                      session.sendToolResponse({
+                        functionResponses: [{
+                          name: fc.name,
+                          response: { output },
+                          id: fc.id
+                        }]
+                      });
+                    } catch (err: any) {
+                      console.error(`[Bella 6.0] ${fc.name} failed:`, err);
+                      session.sendToolResponse({
+                        functionResponses: [{
+                          name: fc.name,
+                          response: { output: { result: `That didn't work: ${err?.message || err}` } },
+                          id: fc.id
+                        }]
+                      });
+                    }
+                  })();
                 } else if (DESKTOP_TOOLS.has(fc.name)) {
                   // ── Desktop control tools: route to Python agent ──
                   (async () => {
@@ -3569,6 +3656,7 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
                           clientWs.send(JSON.stringify({ type: "mini_mode", enabled: true }));
                         } catch {}
                       }
+                      recordStep(fc.name, (fc.args as Record<string, unknown>) || {}); // macro capture
                       const output = agentResult.result ?? { result: "Done." };
                       session.sendToolResponse({
                         functionResponses: [{
@@ -3673,6 +3761,24 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
       });
       
       clientWs.send(JSON.stringify({ type: "status", status: "connected" }));
+      clientWs.send(JSON.stringify({
+        type: "persona_info",
+        persona: persona.id,
+        name: persona.name,
+        voice: resolveVoice(persona),
+        theme: (persona as any).theme,
+      }));
+
+      // BELLA 6.0 — register this live session so background engines
+      // (scheduler, agent fleet) can speak through the conversation.
+      updateBellaCtx({ apiKey, clientWs: clientWs as any, sessionId });
+      registerLiveSession({
+        sessionId,
+        sendRealtimeInput: (input) => { try { session.sendRealtimeInput(input); } catch {} },
+        sendToolResponse: (resp) => { try { session.sendToolResponse(resp as any); } catch {} },
+        clientWs: clientWs as any,
+      });
+
       
       // Proactive Intelligence init sync
       (async () => {
@@ -3716,12 +3822,14 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
               const cleanBase64 = rawVideo.includes(",") ? rawVideo.split(",")[1] : rawVideo;
               if (cleanBase64 && cleanBase64.length > 50) {
                 const now = Date.now();
-                // Enforce minimum 700ms throttle between video frames to maintain optimal Gemini Live bandwidth
+                // Keep the newest frame for live commentary analysis
+                latestFrameBase64 = cleanBase64;
                 if (!sessionState.lastVideoFrameTime || now - sessionState.lastVideoFrameTime >= 700) {
                   sessionState.lastVideoFrameTime = now;
                   session.sendRealtimeInput({
                     video: { data: cleanBase64, mimeType: "image/jpeg" }
                   });
+                  void noteFrame(apiKey); // creator suite: live commentary loop
                 }
               }
             } catch (err) {
@@ -3754,6 +3862,8 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
       
       clientWs.on("close", () => {
         unsubscribeProactive();
+        unregisterLiveSession(sessionId);
+        recorderState.active = false;
         console.log(`[Bella Session ${sessionId}] Client disconnected (session preserved with ${sessionState.dialogueHistory.length} turns)`);
         sessionState.lastDisconnectedAt = Date.now();
         try {
@@ -3799,6 +3909,16 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
     ensureDesktopAgent().catch((e) =>
       console.warn(`[Desktop Agent] Boot probe failed: ${e?.message || e}`)
     );
+
+    // BELLA 6.0 — capability layer boot
+    setFrameProvider(() => latestFrameBase64);
+    registerFullExecutor(async (name, args) => {
+      const result = await callDesktopAgent(name, args);
+      if (!result.ok) throw new Error(result.error || "Desktop agent error.");
+      return result.result ?? { result: "Done." };
+    });
+    startBellaServices();
+    console.log(`[Bella 6.0] Capability layer online — ${bellaToolCount} new voice tools registered.`);
   });
 }
 

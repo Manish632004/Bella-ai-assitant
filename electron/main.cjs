@@ -109,6 +109,67 @@ ipcMain.on('window-minimize', () => {
   if (mainWindow) mainWindow.minimize();
 });
 
+// BELLA 6.0 — voice HUD control: snap window to a named corner / center
+ipcMain.on('position-hud-corner', (_event, corner) => {
+  if (!mainWindow) return;
+  try {
+    const { workArea } = screen.getPrimaryDisplay();
+    const bounds = mainWindow.getBounds();
+    const w = Math.min(bounds.width, isMiniModeActive ? 280 : bounds.width);
+    const h = Math.min(bounds.height, isMiniModeActive ? 280 : bounds.height);
+    const margin = 12;
+    let x = workArea.x + margin;
+    let y = workArea.y + margin;
+    switch (String(corner || '').toLowerCase()) {
+      case 'top-left': break;
+      case 'top-right': x = workArea.x + workArea.width - w - margin; break;
+      case 'center':
+        x = workArea.x + Math.floor((workArea.width - w) / 2);
+        y = workArea.y + Math.floor((workArea.height - h) / 2);
+        break;
+      case 'bottom-right':
+        x = workArea.x + workArea.width - w - margin;
+        y = workArea.y + workArea.height - h - margin; break;
+      case 'bottom-left':
+      default:
+        y = workArea.y + workArea.height - h - margin; break;
+    }
+    mainWindow.setPosition(Math.round(x), Math.round(y));
+    if (!mainWindow.isVisible()) mainWindow.show();
+  } catch (err) {
+    console.error('[HUD Position Error]:', err);
+  }
+});
+
+// BELLA 6.0 — hide/show the HUD by voice
+ipcMain.on('set-hud-visibility', (_event, visible) => {
+  if (!mainWindow) return;
+  try {
+    if (visible) { mainWindow.show(); mainWindow.focus(); }
+    else mainWindow.hide();
+  } catch (err) {
+    console.error('[HUD Visibility Error]:', err);
+  }
+});
+
+// BELLA 6.0 — persist screen recordings from the renderer to disk
+ipcMain.handle('save-recording', async (_event, arrayBuffer, fileName) => {
+  try {
+    const { dialog } = require('electron');
+    const pathMod = require('path');
+    const fsMod = require('fs');
+    const videosDir = pathMod.join(require('os').homedir(), 'Videos', 'BellaRecordings');
+    fsMod.mkdirSync(videosDir, { recursive: true });
+    const safeName = String(fileName || `bella-recording-${Date.now()}.webm`).replace(/[\\/:*?"<>|]/g, '-');
+    const dest = pathMod.join(videosDir, safeName);
+    fsMod.writeFileSync(dest, Buffer.from(arrayBuffer));
+    return { ok: true, path: dest };
+  } catch (err) {
+    console.error('[Recording Save Error]:', err);
+    return { ok: false, error: err.message };
+  }
+});
+
 ipcMain.on('window-maximize', () => {
   if (!mainWindow) return;
   if (mainWindow.isMaximized()) {

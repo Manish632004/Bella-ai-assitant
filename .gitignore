@@ -13,3 +13,37 @@ coverage/
 .env*
 !.env.example
 
+
+# --- BELLA 6.0: local data & secrets (never commit) ---
+.vault_salt
+keys_vault.enc
+secrets.json
+gemini_keys_meta.json
+mail.json
+persona.json
+persona_voices.json
+reminders.json
+expenses.json
+whatsapp_contacts.json
+phone_devices.json
+guardian.json
+agents.json
+coding_engine.json
+coding_lessons.json
+youtube.json
+yt_growth.json
+updater.json
+doc_index.json
+personal_memories.json
+personal_feedback.json
+personal_permissions.json
+temporal_memories.json
+proactive_data.json
+proactive_feedback.json
+proactive_settings.json
+settings.json
+macros/
+skills/
+plugins/
+.bella/
+.claude/settings.local.json
