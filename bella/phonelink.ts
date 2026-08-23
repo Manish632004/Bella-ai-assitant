@@ -49,6 +49,15 @@ const pending = new Map<string, PendingCommand>();
 const answerWaiters = new Map<string, (answer: string | null) => void>();
 let wakeRequested = false;
 
+/** Rolling history of everything pushed to each device (latest last, cap 50). */
+interface HistoryItem { deviceId: string; text: string; t: string; }
+const history = new Map<string, HistoryItem[]>();
+function pushHistory(deviceId: string, text: string): void {
+  const list = history.get(deviceId) || [];
+  list.push({ deviceId, text, t: new Date().toISOString() });
+  history.set(deviceId, list.slice(-50));
+}
+
 function lanAddress(): string {
   const nets = os.networkInterfaces();
   for (const list of Object.values(nets)) {
@@ -95,13 +104,17 @@ let dev=JSON.parse(localStorage.getItem('bella_phone')||'null');
 async function api(p,body){const r=await fetch('/api/phone/'+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});return r.json();}
 async function register(){const name=document.getElementById('name').value.trim();if(!name)return;
  const res=await api('register',{pairToken:T,name});
- if(res.deviceId){dev=res;localStorage.setItem('bella_phone',JSON.stringify(dev));show();}}
+ if(res.deviceId){dev=res;localStorage.setItem('bella_phone',JSON.stringify(dev));show();loadHistory();}}
 function show(){document.getElementById('setup').style.display='none';document.getElementById('main').style.display='block';
  document.getElementById('devname').textContent=dev.name;}
 async function wake(){await api('wake',{deviceId:dev.id,deviceToken:dev.token});alert('BELLA is waking up on your PC!');}
 async function sendAnswer(){const a=document.getElementById('ans').value;if(!a||!window._cmd)return;
  await api('answer',{deviceId:dev.id,deviceToken:dev.token,commandId:window._cmd.id,answer:a});
  window._cmd=null;document.getElementById('askbox').style.display='none';poll();}
+async function loadHistory(){try{
+ const r=await fetch('/api/phone/history?deviceId='+dev.id+'&deviceToken='+dev.token);
+ if(r.status===200){const j=await r.json();(j.history||[]).forEach(h=>addLog('🔔 '+h.text));}
+}catch(e){}}
 function addLog(t){const d=document.createElement('div');d.textContent=t;document.getElementById('log').prepend(d);}
 async function poll(){if(!dev)return;try{
  const r=await fetch('/api/phone/poll?deviceId='+dev.id+'&deviceToken='+dev.token);
@@ -111,7 +124,7 @@ async function poll(){if(!dev)return;try{
    document.getElementById('askbox').style.display='block';addLog('❓ '+c.text);}}
 }catch(e){}}
 setInterval(poll,3000);
-(async()=>{if(dev){const ok=await fetch('/api/phone/poll?deviceId='+dev.id+'&deviceToken='+dev.token);if(ok.status!==401)show();else dev=null;}if(!dev&&T){}})();
+(async()=>{if(dev){const ok=await fetch('/api/phone/poll?deviceId='+dev.id+'&deviceToken='+dev.token);if(ok.status!==401)show();else dev=null;}})();
 </script></body></html>`;
 
 // ---------------------------------------------------------------------------
@@ -192,6 +205,13 @@ phonelinkRouter.get("/wake-request", (_req, res) => {
   res.json({ wake: wasSet });
 });
 
+/** Message history for a device so the companion page can catch up. */
+phonelinkRouter.get("/history", (req, res) => {
+  const dev = authDevice(req);
+  if (!dev) return res.status(401).json({ error: "Unknown device." });
+  res.json({ history: history.get(dev.id)?.slice(-30) || [] });
+});
+
 // ---------------------------------------------------------------------------
 // Tool module
 // ---------------------------------------------------------------------------
@@ -256,6 +276,7 @@ export const phonelinkModule: ToolModule = {
           createdAt: Date.now(),
         };
         pending.set(cmd.id, cmd);
+        pushHistory(dev.id, `❓ ${String(args.question)}`);
         const answer = await new Promise<string | null>((resolve) => {
           answerWaiters.set(cmd.id, resolve);
           setTimeout(() => {
@@ -273,13 +294,15 @@ export const phonelinkModule: ToolModule = {
       case "sendToPhone": {
         const dev = pickDevice(args.device ? String(args.device) : undefined);
         if (!dev) throw new Error("No phone paired yet.");
-        pending.set(`n${Date.now()}`, {
-          id: `n${Date.now()}`,
+        const id = `n${Date.now()}`;
+        pending.set(id, {
+          id,
           deviceId: dev.id,
           kind: "notify",
           text: String(args.text),
           createdAt: Date.now(),
         });
+        pushHistory(dev.id, String(args.text));
         return { result: `Sent to ${dev.name}.` };
       }
       case "listPairedPhones": {

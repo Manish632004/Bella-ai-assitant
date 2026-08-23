@@ -444,11 +444,13 @@ export function getLiveSessionCount(): number {
 /**
  * Whisper something into the live conversation — Bella speaks it aloud.
  * Used by reminders firing, background agents reporting back, etc.
+ * When no session is live, a toast is queued for the tray instead.
  */
 export function announce(text: string, sessionId?: string): boolean {
   const handle = getLiveSession(sessionId);
   if (!handle) {
-    console.log(`[Bella Announce] (no live session) ${text}`);
+    console.log(`[Bella Announce] (no live session → toast) ${text}`);
+    pushToast("BELLA", text.slice(0, 180));
     return false;
   }
   try {
@@ -463,6 +465,19 @@ export function announce(text: string, sessionId?: string): boolean {
     console.error("[Bella Announce] failed:", err);
     return false;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Toast bridge → electron/main.cjs watches this file and shows Windows
+// notifications even when the HUD window is closed.
+// ---------------------------------------------------------------------------
+export function pushToast(title: string, body: string): void {
+  try {
+    const file = dataFile("toasts.json");
+    const log = readJson<{ t: number; title: string; body: string; shown?: boolean }[]>(file, []);
+    log.push({ t: Date.now(), title, body });
+    writeJson(file, log.slice(-10));
+  } catch { /* best-effort */ }
 }
 
 // ---------------------------------------------------------------------------
@@ -486,9 +501,12 @@ export function resolveUserPath(p: string): string {
 
 export async function runPowerShell(script: string, timeoutMs = 30000): Promise<{ ok: boolean; stdout: string; stderr: string }> {
   const { exec } = await import("child_process");
+  // EncodedCommand avoids all quoting/escaping pitfalls (multi-line scripts,
+  // embedded C#, nested quotes).
+  const encoded = Buffer.from(script, "utf16le").toString("base64");
   return new Promise((resolve) => {
     const child = exec(
-      `powershell -NoProfile -NonInteractive -Command "${script.replace(/"/g, '\\"')}"`,
+      `powershell -NoProfile -NonInteractive -EncodedCommand ${encoded}`,
       { timeout: timeoutMs, windowsHide: true, maxBuffer: 4 * 1024 * 1024 },
       (err, stdout, stderr) => resolve({ ok: !err, stdout: stdout?.toString() || "", stderr: stderr?.toString() || err?.message || "" }),
     );

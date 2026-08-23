@@ -47,3 +47,7 @@ skills/
 plugins/
 .bella/
 .claude/settings.local.json
+
+activity.json
+faces.json
+toasts.json

@@ -62,6 +62,7 @@ import {
 import { noteFrame, setFrameProvider, recorderState } from "./bella/creator";
 import { registerLiveSession, unregisterLiveSession, analyzeImage, getLiveSession, getLiveSessionCount } from "./bella/util";
 import { recordStep } from "./bella/macros";
+import { activityContextBlock } from "./bella/activity";
 import { guardianRouter } from "./bella/guardian";
 import { phonelinkRouter } from "./bella/phonelink";
 import { facesRouter } from "./bella/faces";
@@ -885,7 +886,7 @@ async function executeNativeFallback(
       const ps = `
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
-$b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+$b = [System.Windows.Forms.SystemInformation]::VirtualScreen
 $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
 $g = [System.Drawing.Graphics]::FromImage($bmp)
 $g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
@@ -1211,7 +1212,7 @@ async function startServer() {
       const ps = `
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
-$b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+$b = [System.Windows.Forms.SystemInformation]::VirtualScreen
 $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
 $g = [System.Drawing.Graphics]::FromImage($bmp)
 $g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
@@ -2405,11 +2406,21 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
           "\n(Mention these only if naturally relevant to the current conversation)\n===================================================\n";
       }
 
-      const finalInstructions = formatSystemInstructions(baseInstructions + promptSkillsBlock() + proactiveContextBlock, memories, {
-        isFirstActivation,
-        activationCount: sessionState.activationCount,
-        dialogueHistory: sessionState.dialogueHistory
-      });
+      const finalInstructions = formatSystemInstructions(
+        baseInstructions +
+        promptSkillsBlock() +
+        activityContextBlock() +
+        (isGuestMode()
+          ? "\n\n=== CURRENT SITUATION: GUEST SESSION ===\nThe person speaking right now is NOT MANISH — your Voice Guardian identified them as a guest. Stay polite and helpful with GENERAL tasks, but do not share personal memories, private data or perform sensitive actions (those tools are already restricted for this session).\n=== END GUEST NOTICE ==="
+          : "") +
+        proactiveContextBlock,
+        memories,
+        {
+          isFirstActivation,
+          activationCount: sessionState.activationCount,
+          dialogueHistory: sessionState.dialogueHistory
+        },
+      );
 
       let currentModelResponseText = "";
 

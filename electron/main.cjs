@@ -507,6 +507,10 @@ async function bootstrap() {
     await waitForBackend(SERVER_READY_TIMEOUT_MS);
     createMainWindow();
     try { createTray(); } catch (err) { console.error('[Tray] failed:', err); }
+    try {
+      const { Notification } = require('electron');
+      if (Notification.isSupported()) startToastWatcher();
+    } catch (err) { console.error('[Toast watcher] failed:', err); }
   } catch (err) {
     if (splashWindow) splashWindow.close();
     dialog.showErrorBox(
@@ -515,6 +519,39 @@ async function bootstrap() {
     );
     app.quit();
   }
+}
+
+// ---------------------------------------------------------------------------
+// BELLA 6.0 — Toast bridge: surface server-side events (reminders, finished
+// agents) as native Windows notifications, even with the HUD closed.
+// ---------------------------------------------------------------------------
+let lastToastTs = 0;
+function startToastWatcher() {
+  const fsMod = require('fs');
+  const pathMod = require('path');
+  const dataDir = process.env.BELLA_DATA_DIR || APP_ROOT;
+  const toastFile = pathMod.join(dataDir, 'toasts.json');
+  const showNew = () => {
+    try {
+      if (!fsMod.existsSync(toastFile)) return;
+      const list = JSON.parse(fsMod.readFileSync(toastFile, 'utf-8'));
+      const fresh = list.filter(t => t.t > lastToastTs);
+      for (const t of fresh) {
+        lastToastTs = Math.max(lastToastTs, t.t);
+        try {
+          const n = new Notification({
+            title: String(t.title || 'BELLA'),
+            body: String(t.body || '').slice(0, 200),
+            icon: fs.existsSync(pathMod.join(APP_ROOT, 'public', 'icon.png')) ? pathMod.join(APP_ROOT, 'public', 'icon.png') : undefined,
+            silent: false,
+          });
+          n.on('click', () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } });
+          n.show();
+        } catch (e) { console.error('[Toast] show failed:', e); }
+      }
+    } catch { /* file mid-write — next poll picks it up */ }
+  };
+  setInterval(showNew, 5000);
 }
 
 // ---------------------------------------------------------------------------

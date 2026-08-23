@@ -24,6 +24,7 @@ import { updaterModule } from "./updater";
 import { whiteboardModule } from "./whiteboard";
 import { facesModule } from "./faces";
 import { briefingModule } from "./briefing";
+import { activityModule, startActivityTracker } from "./activity";
 import { setDispatcher } from "./runtime";
 import { recordStep, isRecording } from "./macros";
 import { setCurrentApiKey } from "./util";
@@ -46,6 +47,7 @@ const MODULES: ToolModule[] = [
   whiteboardModule,
   facesModule,
   briefingModule,
+  activityModule,
 ];
 
 export const bellaDeclarations: FunctionDeclaration[] =
@@ -103,4 +105,5 @@ setDispatcher(async (name, args) => {
 export function startBellaServices(): void {
   startSchedulerTicker();
   startClipboardWatcher();
+  startActivityTracker();
 }

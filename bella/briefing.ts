@@ -13,6 +13,7 @@ import {
 import { loadReminders, describeWhen } from "./scheduler";
 import { loadExpenses } from "./comms";
 import { findJobs } from "./agents";
+import { activitySummary } from "./activity";
 import type { ToolModule } from "./types";
 
 async function weatherLine(): Promise<string> {
@@ -78,6 +79,9 @@ export async function buildBriefing(): Promise<string[]> {
   if (jobs.length) {
     lines.push(`Background agents still working: ${jobs.map(j => j.mission.slice(0, 40)).join(", ")}.`);
   }
+
+  const act = activitySummary(180);
+  if (act) lines.push(`Recent focus: ${act}.`);
 
   if (!lines.length) lines.push("All quiet — no alerts, nothing pending. A perfect morning.");
   return lines;

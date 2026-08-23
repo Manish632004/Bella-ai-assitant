@@ -519,6 +519,15 @@ export const whatsappModule: ToolModule = {
         properties: { contact: { type: Type.STRING, description: "Optional: open a specific chat first." } },
       },
     },
+    {
+      name: "openWhatsAppForCall",
+      description: "Open a contact's WhatsApp chat ready for a voice/video call (WhatsApp has no programmatic call API — the user taps the call button, everything else is hands-free).",
+      parameters: {
+        type: Type.OBJECT,
+        properties: { contact: { type: Type.STRING } },
+        required: ["contact"],
+      },
+    },
   ],
   async execute(name, args) {
     switch (name) {
@@ -552,6 +561,12 @@ export const whatsappModule: ToolModule = {
         await sleep(1800);
         await dispatchTool("pressEnter", {});
         return { result: `Sent ${path.basename(filePath)} to ${args.contact} on WhatsApp.` };
+      }
+      case "openWhatsAppForCall": {
+        const phone = resolvePhone(String(args.contact));
+        if (!phone) throw new Error(`Unknown contact "${args.contact}".`);
+        await openChat(phone);
+        return { result: `${args.contact}'s chat is open in WhatsApp Desktop — tap the call button (voice or video) in the top-right.` };
       }
       case "readWhatsAppChats": {
         if (args.contact) {
