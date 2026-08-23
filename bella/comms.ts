@@ -585,7 +585,7 @@ export interface Expense {
   merchant: string; category: string; description: string; source: string;
 }
 const EXPENSES_FILE = dataFilePath("expenses.json");
-const loadExpenses = (): Expense[] => readJson<Expense[]>(EXPENSES_FILE, []);
+export const loadExpenses = (): Expense[] => readJson<Expense[]>(EXPENSES_FILE, []);
 const saveExpenses = (list: Expense[]) => writeJson(EXPENSES_FILE, list);
 
 const BANK_HINT_RE = /(debited|credited\s+(rs|inr|₹)|spent|purchase|txn|transaction|upi|order confirmed|payment successful|card used)/i;

@@ -23,6 +23,7 @@ import { guardianModule } from "./guardian";
 import { updaterModule } from "./updater";
 import { whiteboardModule } from "./whiteboard";
 import { facesModule } from "./faces";
+import { briefingModule } from "./briefing";
 import { setDispatcher } from "./runtime";
 import { recordStep, isRecording } from "./macros";
 import { setCurrentApiKey } from "./util";
@@ -44,6 +45,7 @@ const MODULES: ToolModule[] = [
   updaterModule,
   whiteboardModule,
   facesModule,
+  briefingModule,
 ];
 
 export const bellaDeclarations: FunctionDeclaration[] =

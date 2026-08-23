@@ -65,6 +65,8 @@ import { recordStep } from "./bella/macros";
 import { guardianRouter } from "./bella/guardian";
 import { phonelinkRouter } from "./bella/phonelink";
 import { facesRouter } from "./bella/faces";
+import { loadReminders, describeWhen } from "./bella/scheduler";
+import { loadExpenses } from "./bella/comms";
 
 dotenv.config();
 
@@ -1706,8 +1708,51 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
     } catch (e: any) { res.status(400).json({ error: e.message }); }
   });
 
-  app.get("/api/email/status", (_req, res) => {
+  app.get("/api/bella/reminders", (_req, res) => {
     try {
+      const list = loadReminders().filter(r => r.active).map(r => ({
+        id: r.id, text: r.text, when: describeWhen(r),
+      }));
+      res.json({ reminders: list });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.get("/api/bella/expenses", (req, res) => {
+    try {
+      const limit = Math.min(50, parseInt(String(req.query.limit || "10"), 10) || 10);
+      const list = loadExpenses().slice(-limit).reverse();
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const todays = loadExpenses().filter(e => new Date(e.date) >= today);
+      res.json({
+        transactions: list,
+        todayTotal: todays.reduce((s, e) => s + e.amount, 0).toFixed(2),
+        currency: todays[0]?.currency || "",
+      });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.get("/api/skills", async (_req, res) => {
+    try {
+      const out = await executeBellaTool("listInstalledSkills", {}, { apiKey: getGeminiApiKey() || "", clientWs: null, sessionId: "settings" }) as any;
+      res.json(out);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post("/api/skills/install", express.json(), async (req, res) => {
+    try {
+      const out = await executeBellaTool("installMarketplaceSkill", { id: String(req.body?.id || "") }, { apiKey: getGeminiApiKey() || "", clientWs: null, sessionId: "settings" }) as any;
+      res.json(out);
+    } catch (e: any) { res.status(400).json({ error: e.message }); }
+  });
+
+  app.post("/api/bella/check-updates", async (_req, res) => {
+    try {
+      const out = await executeBellaTool("checkForUpdates", {}, { apiKey: getGeminiApiKey() || "", clientWs: null, sessionId: "settings" }) as any;
+      res.json(out);
+    } catch (e: any) { res.json({ result: `Update check failed: ${e.message}` }); }
+  });
+
+  app.get("/api/email/status", (_req, res) => {    try {
       const cfg = readJson<any | null>(dataFile("mail.json"), null);
       res.json({ configured: !!cfg?.address, address: cfg?.address || "" });
     } catch (e: any) { res.status(500).json({ error: e.message }); }

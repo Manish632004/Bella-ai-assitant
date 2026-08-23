@@ -43,7 +43,7 @@ export interface Reminder {
 }
 
 const REMINDERS_FILE = dataFile("reminders.json");
-const loadReminders = () => readJson<Reminder[]>(REMINDERS_FILE, []);
+export const loadReminders = () => readJson<Reminder[]>(REMINDERS_FILE, []);
 const saveReminders = (list: Reminder[]) => writeJson(REMINDERS_FILE, list);
 
 const DAY_NAMES: Record<string, number> = {
