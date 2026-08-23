@@ -37,6 +37,7 @@ export function BellaSixSettings() {
   const [spend, setSpend] = useState<{ todayTotal: string; currency: string; transactions: ExpenseRow[] } | null>(null);
   const [skills, setSkills] = useState<SkillRow[]>([]);
   const [updateMsg, setUpdateMsg] = useState("");
+  const [updateReady, setUpdateReady] = useState(false);
 
   const refreshDashboards = useCallback(async () => {
     try {
@@ -245,19 +246,38 @@ export function BellaSixSettings() {
       </Section>
 
       <Section icon={Rocket} title="Updates">
-        <button
-          onClick={async () => {
-            setUpdateMsg("Checking…");
-            try {
-              const r = await fetch("/api/bella/check-updates", { method: "POST" });
-              const j = await r.json();
-              setUpdateMsg(String(j?.result || j?.error || ""));
-            } catch (e: any) { setUpdateMsg(e.message); }
-          }}
-          className="px-3 py-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-200 text-xs font-mono transition cursor-pointer"
-        >
-          CHECK FOR UPDATES
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={async () => {
+              setUpdateMsg("Checking…");
+              try {
+                const r = await fetch("/api/bella/check-updates", { method: "POST" });
+                const j = await r.json();
+                setUpdateMsg(String(j?.result || j?.error || ""));
+                if (/available/i.test(String(j?.result))) setUpdateReady(true);
+                else setUpdateReady(false);
+              } catch (e: any) { setUpdateMsg(e.message); }
+            }}
+            className="px-3 py-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-200 text-xs font-mono transition cursor-pointer"
+          >
+            CHECK FOR UPDATES
+          </button>
+          {updateReady && (
+            <button
+              onClick={async () => {
+                setUpdateMsg("Downloading… the installer launches when it lands.");
+                try {
+                  const r = await fetch("/api/bella/install-update", { method: "POST" });
+                  const j = await r.json();
+                  setUpdateMsg(String(j?.result || j?.error || ""));
+                } catch (e: any) { setUpdateMsg(e.message); }
+              }}
+              className="px-3 py-1.5 rounded-lg border border-cyan-500/40 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-200 text-xs font-mono transition cursor-pointer"
+            >
+              INSTALL NOW
+            </button>
+          )}
+        </div>
         {updateMsg && <p className="text-[11px] font-mono text-slate-300">{updateMsg}</p>}
       </Section>
 

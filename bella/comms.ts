@@ -17,6 +17,7 @@ import path from "path";
 import { Type } from "@google/genai";
 import {
   readJson, writeJson, generateJson, runCommand, resolveUserPath, dataFilePath, HOME,
+  readSecretJson, writeSecretJson,
 } from "./util";
 import { getCurrentApiKey } from "./util";
 import { dispatchTool } from "./runtime";
@@ -35,7 +36,7 @@ export interface MailConfig {
   smtpStarttls?: boolean;
 }
 const MAIL_FILE = dataFilePath("mail.json");
-const loadMailConfig = () => readJson<MailConfig | null>(MAIL_FILE, null);
+const loadMailConfig = () => readSecretJson<MailConfig | null>(MAIL_FILE, null);
 
 function providerHosts(address: string): Omit<MailConfig, "address" | "password"> {
   const domain = address.split("@")[1]?.toLowerCase() || "";
@@ -366,8 +367,7 @@ export const emailModule: ToolModule = {
         }
         const count = await imap.select("INBOX");
         imap.logout();
-        writeJson(MAIL_FILE, cfg);
-        try { fs.chmodSync(MAIL_FILE, 0o600); } catch {}
+        writeSecretJson(MAIL_FILE, cfg);
         return { result: `Email connected: ${address}. Inbox has ${count} messages. I can now read your mail aloud, send new email and scan expenses.` };
       }
       case "checkUnreadEmail": {

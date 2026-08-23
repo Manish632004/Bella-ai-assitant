@@ -1752,6 +1752,13 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
     } catch (e: any) { res.json({ result: `Update check failed: ${e.message}` }); }
   });
 
+  app.post("/api/bella/install-update", async (_req, res) => {
+    try {
+      const out = await executeBellaTool("installUpdate", {}, { apiKey: getGeminiApiKey() || "", clientWs: null, sessionId: "settings" }) as any;
+      res.json(out);
+    } catch (e: any) { res.json({ result: `Install failed: ${e.message}` }); }
+  });
+
   app.get("/api/email/status", (_req, res) => {    try {
       const cfg = readJson<any | null>(dataFile("mail.json"), null);
       res.json({ configured: !!cfg?.address, address: cfg?.address || "" });

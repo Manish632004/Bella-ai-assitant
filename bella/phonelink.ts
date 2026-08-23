@@ -12,7 +12,7 @@ import crypto from "crypto";
 import path from "path";
 import express from "express";
 import { Type } from "@google/genai";
-import { readJson, writeJson, dataFilePath } from "./util";
+import { readJson, writeJson, dataFilePath, readSecretJson, writeSecretJson } from "./util";
 import type { ToolModule } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -35,8 +35,8 @@ interface PendingCommand {
 }
 
 const DEVICES_FILE = dataFilePath("phone_devices.json");
-const loadDevices = (): PhoneDevice[] => readJson<PhoneDevice[]>(DEVICES_FILE, []);
-const saveDevices = (list: PhoneDevice[]) => writeJson(DEVICES_FILE, list);
+const loadDevices = (): PhoneDevice[] => readSecretJson<PhoneDevice[]>(DEVICES_FILE, []);
+const saveDevices = (list: PhoneDevice[]) => writeSecretJson(DEVICES_FILE, list);
 
 let pairToken = "";
 function newPairToken(): string {

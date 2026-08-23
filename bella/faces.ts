@@ -15,7 +15,8 @@ import fs from "fs";
 import path from "path";
 import { Type } from "@google/genai";
 import {
-  readJson, writeJson, dataFilePath, analyzeImages, getCurrentApiKey, HOME, ensureDir,
+  readSecretJson, writeSecretJson, analyzeImages, getCurrentApiKey, HOME, ensureDir,
+  dataFilePath,
 } from "./util";
 import type { ToolModule, BellaToolContext } from "./types";
 
@@ -25,8 +26,8 @@ import type { ToolModule, BellaToolContext } from "./types";
 interface KnownPerson { name: string; frames: string[]; addedAt: string; }
 interface FacesStore { people: KnownPerson[]; }
 const FACES_FILE = dataFilePath("faces.json");
-const loadFaces = (): FacesStore => readJson<FacesStore>(FACES_FILE, { people: [] });
-const saveFaces = (s: FacesStore) => { writeJson(FACES_FILE, s); try { fs.chmodSync(FACES_FILE, 0o600); } catch {} };
+const loadFaces = (): FacesStore => readSecretJson<FacesStore>(FACES_FILE, { people: [] });
+const saveFaces = (s: FacesStore) => writeSecretJson(FACES_FILE, s);
 
 const SNAP_DIR = ensureDir(path.join(HOME(), "Pictures", "BellaFaces"));
 

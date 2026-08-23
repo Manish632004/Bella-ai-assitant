@@ -244,6 +244,69 @@ export function createPdfBytes(title: string, sections: { heading?: string; body
 }
 
 // ---------------------------------------------------------------------------
+// Secrets at rest — machine-bound AES-256-GCM (mirrors server_key_vault.ts
+// derivation without importing it, so bundling stays cycle-free).
+// ---------------------------------------------------------------------------
+const SECRET_MARKER = "BELLA_SECRET_V1";
+
+let secretKeyCache: Buffer | null = null;
+function secretKey(): Buffer {
+  if (secretKeyCache) return secretKeyCache;
+  const crypto = require("crypto") as typeof import("crypto");
+  const saltFile = dataFile(".vault_salt");
+  let salt: Buffer;
+  try {
+    if (fs.existsSync(saltFile)) salt = Buffer.from(fs.readFileSync(saltFile, "utf-8").trim(), "hex");
+    else { salt = crypto.randomBytes(32); fs.writeFileSync(saltFile, salt.toString("hex"), "utf-8"); }
+  } catch { salt = crypto.createHash("sha256").update("bella-vault-default-salt").digest(); }
+  const fingerprint = [os.hostname(), os.platform(), os.arch(), os.userInfo().username, salt.toString("hex")].join("::");
+  secretKeyCache = crypto.scryptSync(fingerprint, salt, 32);
+  return secretKeyCache;
+}
+
+/** Serialize an object as an encrypted at-rest blob string. */
+export function encryptSecretBlob(obj: unknown): string {
+  const crypto = require("crypto") as typeof import("crypto");
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", secretKey(), iv);
+  const ct = Buffer.concat([cipher.update(Buffer.from(JSON.stringify(obj), "utf-8")), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return `${SECRET_MARKER}:${iv.toString("base64")}:${tag.toString("base64")}:${ct.toString("base64")}`;
+}
+
+/** Read a store written by encryptSecretBlob (or legacy plaintext JSON). */
+export function decryptSecretBlob<T>(raw: string, fallback: T): T {
+  try {
+    if (!raw.startsWith(SECRET_MARKER)) return JSON.parse(raw) as T; // legacy plaintext
+    const [, ivB64, tagB64, ctB64] = raw.split(":");
+    const crypto = require("crypto") as typeof import("crypto");
+    const decipher = crypto.createDecipheriv("aes-256-gcm", secretKey(), Buffer.from(ivB64, "base64"));
+    decipher.setAuthTag(Buffer.from(tagB64, "base64"));
+    const pt = Buffer.concat([decipher.update(Buffer.from(ctB64, "base64")), decipher.final()]);
+    return JSON.parse(pt.toString("utf-8")) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+export function readSecretJson<T>(file: string, fallback: T): T {
+  try {
+    if (fs.existsSync(file)) return decryptSecretBlob<T>(fs.readFileSync(file, "utf-8"), fallback);
+  } catch {}
+  return fallback;
+}
+
+export function writeSecretJson(file: string, data: unknown): void {
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, encryptSecretBlob(data), "utf-8");
+    try { fs.chmodSync(file, 0o600); } catch {}
+  } catch (err) {
+    console.error(`[Bella Util] Failed writing encrypted ${file}:`, err);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Gemini one-shot helpers
 // ---------------------------------------------------------------------------
 /** Model candidates tried in order when a call 404s; winner gets cached. */

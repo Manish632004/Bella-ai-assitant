@@ -15,6 +15,7 @@ import path from "path";
 import { Type } from "@google/genai";
 import {
   readJson, writeJson, dataFilePath, announce, analyzeImage, generateText, runCommand,
+  readSecretJson, writeSecretJson,
 } from "./util";
 import { getCurrentApiKey } from "./util";
 import type { ToolModule } from "./types";
@@ -98,8 +99,9 @@ interface YtConfig {
   };
 }
 const YT_FILE = dataFilePath("youtube.json");
-const loadYt = () => readJson<YtConfig>(YT_FILE, {});
-const saveYt = (patch: Partial<YtConfig>) => writeJson(YT_FILE, { ...loadYt(), ...patch });
+const loadYt = () => readSecretJson<YtConfig>(YT_FILE, {});
+const saveYt = (patch: Partial<YtConfig>) => writeSecretJson(YT_FILE, { ...loadYt(), ...patch });
+
 
 async function ytApi<T>(pathName: string, params: Record<string, string>): Promise<T> {
   const cfg = loadYt();

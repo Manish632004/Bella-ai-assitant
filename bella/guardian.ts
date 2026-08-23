@@ -10,7 +10,7 @@
  */
 import express from "express";
 import { Type } from "@google/genai";
-import { readJson, writeJson, dataFilePath } from "./util";
+import { readJson, writeJson, dataFilePath, readSecretJson, writeSecretJson } from "./util";
 import type { ToolModule } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -24,8 +24,8 @@ interface GuardianStore {
 }
 const STORE_FILE = dataFilePath("guardian.json");
 const loadStore = (): GuardianStore =>
-  readJson<GuardianStore>(STORE_FILE, { prints: [], armed: false, threshold: 0.9, recognitions: [] });
-const saveStore = (s: GuardianStore) => writeJson(STORE_FILE, s);
+  readSecretJson<GuardianStore>(STORE_FILE, { prints: [], armed: false, threshold: 0.9, recognitions: [] });
+const saveStore = (s: GuardianStore) => writeSecretJson(STORE_FILE, s);
 
 // Session identity state (set by server.ts after wake-check verification)
 let lastSpeaker: "owner" | "guest" | "unknown" = "unknown";

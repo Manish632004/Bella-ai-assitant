@@ -233,6 +233,7 @@ let mainWindow = null;
 /** @type {BrowserWindow | null} */
 let splashWindow = null;
 let isQuitting = false;
+let tray = null;
 
 // ---------------------------------------------------------------------------
 // Single-instance guard â€” second launches focus the existing window instead of
@@ -443,6 +444,15 @@ function createMainWindow() {
     }
   });
 
+  // BELLA 6.0 — close-to-tray: keep her alive in the background so wake word,
+  // reminders and phone link keep working when the window is dismissed.
+  mainWindow.on('close', (e) => {
+    if (!isQuitting) {
+      e.preventDefault();
+      mainWindow.hide();
+    }
+  });
+
   mainWindow.on('restore', () => {
     if (isMiniModeActive) {
       restoreFullScreenMode();
@@ -496,6 +506,7 @@ async function bootstrap() {
     startBackend();
     await waitForBackend(SERVER_READY_TIMEOUT_MS);
     createMainWindow();
+    try { createTray(); } catch (err) { console.error('[Tray] failed:', err); }
   } catch (err) {
     if (splashWindow) splashWindow.close();
     dialog.showErrorBox(
@@ -514,8 +525,7 @@ app.on('activate', () => {
 });
 
 app.on('window-all-closed', () => {
-  // Phase 2 introduces close-to-tray; for now quitting when all windows close
-  // is the expected behaviour on Windows.
+  // With close-to-tray the window is only hidden, so this fires on real quit.
   if (process.platform !== 'darwin') app.quit();
 });
 
@@ -523,5 +533,35 @@ app.on('before-quit', () => {
   isQuitting = true;
   stopBackend();
 });
+
+// ---------------------------------------------------------------------------
+// BELLA 6.0 — System tray
+// ---------------------------------------------------------------------------
+function createTray() {
+  const { Tray, nativeImage } = require('electron');
+  const candidates = [path.join(APP_ROOT, 'assets', 'icon.png'), path.join(APP_ROOT, 'public', 'icon.png')];
+  const iconPath = candidates.find(p => fs.existsSync(p));
+  const icon = iconPath
+    ? nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 })
+    : nativeImage.createEmpty();
+
+  tray = new Tray(icon);
+  tray.setToolTip('BELLA — voice-first desktop AI');
+
+  const showWindow = () => {
+    if (!mainWindow) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  };
+
+  tray.on('click', showWindow);
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: 'Show BELLA', click: showWindow },
+    { label: 'Hide', click: () => mainWindow && mainWindow.hide() },
+    { type: 'separator' },
+    { label: 'Quit BELLA', click: () => { isQuitting = true; app.quit(); } },
+  ]));
+}
 
 process.on('exit', stopBackend);
