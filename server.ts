@@ -60,7 +60,7 @@ import {
   getLastSpeaker,
 } from "./bella/guardian";
 import { noteFrame, setFrameProvider, recorderState } from "./bella/creator";
-import { registerLiveSession, unregisterLiveSession, analyzeImage } from "./bella/util";
+import { registerLiveSession, unregisterLiveSession, analyzeImage, getLiveSession, getLiveSessionCount } from "./bella/util";
 import { recordStep } from "./bella/macros";
 import { guardianRouter } from "./bella/guardian";
 import { phonelinkRouter } from "./bella/phonelink";
@@ -1656,10 +1656,37 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
   app.use("/api/guardian", express.json({ limit: "20mb" }), guardianRouter);
   app.use("/api/phone", express.json(), phonelinkRouter);
   app.get("/api/bella/stats", (_req, res) => {
-    res.json({ tools: bellaToolCount, guestMode: isGuestMode(), lastSpeaker: getLastSpeaker() });
+    res.json({
+      tools: bellaToolCount,
+      guestMode: isGuestMode(),
+      lastSpeaker: getLastSpeaker(),
+      liveSessions: getLiveSessionCount(),
+    });
   });
 
   // --- BELLA 6.0 Settings-panel endpoints ---
+
+  // Diagnostic: push a sample drawing straight to the connected HUD so the
+  // whiteboard render path can be verified independently of the AI.
+  app.post("/api/bella/whiteboard-demo", express.json(), async (req, res) => {
+    const handle = getLiveSession();
+    if (!handle?.clientWs) return res.status(503).json({ ok: false, error: "No live HUD session connected." });
+    const els: any[] = [
+      { type: "text", x: 300, y: 30, text: "Whiteboard self-test", color: "#7dd3fc" },
+      { type: "rect", x: 120, y: 220, w: 260, h: 160, color: "#38bdf8", width: 4 },
+      { type: "text", x: 170, y: 285, text: "Input", color: "#ffffff" },
+      { type: "arrow", x: 390, y: 300, x2: 590, y2: 300, color: "#fbbf24", width: 5 },
+      { type: "circle", x: 700, y: 300, r: 110, color: "#a78bfa", width: 4 },
+      { type: "text", x: 655, y: 290, text: "Output", color: "#ffffff" },
+    ];
+    handle.clientWs.send(JSON.stringify({ type: "whiteboard_open", topic: "Self-test" }));
+    for (const el of els) {
+      handle.clientWs.send(JSON.stringify({ type: "whiteboard_draw", element: el }));
+      await new Promise(r => setTimeout(r, 250));
+    }
+    res.json({ ok: true, sent: els.length });
+  });
+
   app.get("/api/bella/personas", (_req, res) => {
     try {
       const active = getActivePersona();
@@ -2308,7 +2335,13 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
         "     * 'What is this device?', 'How does this work?': Recognize electronics, microcontrollers (e.g. Raspberry Pi, ESP32, Arduino), network hardware (routers, switches, cables, adapters), PC peripherals, and tools.\n" +
         "     * 'Remember this': Call 'rememberVisualContext(summary=\"...\")' to persist a concise description of what was shown in the camera into your memory core.\n" +
         "     * 'Compare these two objects': Compare the visual features, models, ports, or text of both items in view.\n" +
-        "   - Always speak directly and naturally about what you SEE in the live camera frames without hesitation or generic disclaimers.";
+        "   - Always speak directly and naturally about what you SEE in the live camera frames without hesitation or generic disclaimers.\n" +
+        "15. WHITEBOARD & STUDY MODE (drawings, diagrams, teaching):\n" +
+        "   - When MANISH asks you to 'draw', 'explain on the whiteboard', 'teach me X visually', 'show a diagram of X', 'sketch', or asks to understand a concept visually: CALL 'explainWithWhiteboard(topic=\"...\")' IMMEDIATELY! It plans a clean diagram and draws it element-by-element while you narrate.\n" +
+        "   - NEVER just describe a diagram verbally when he asked you to DRAW — always invoke 'explainWithWhiteboard' (it auto-opens the board). Use 'openWhiteboard' alone ONLY when he wants a blank board.\n" +
+        "   - While the drawing streams in, narrate what each part shows ('Now I'm labeling the encoder stack…').\n" +
+        "   - Extra elements mid-lesson: 'drawOnWhiteboard'. Wipe: 'clearWhiteboard'. When he says save/export the board: 'saveWhiteboard(name=\"...\")' — saved as PNG in Pictures/BellaBoards. Close with 'closeWhiteboard' when done teaching.\n" +
+        "   - Great triggers: 'explain how a transformer works, draw it', 'diagram the water cycle', 'teach me sorting with a whiteboard'.\n";
 
       const activeProactiveSuggestions = proactiveEngine.getActiveSuggestions();
       let proactiveContextBlock = "";

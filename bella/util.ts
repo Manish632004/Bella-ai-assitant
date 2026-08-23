@@ -324,6 +324,10 @@ export function getLiveSession(sessionId?: string): LiveSessionHandle | null {
   return null;
 }
 
+export function getLiveSessionCount(): number {
+  return liveSessions.size;
+}
+
 /**
  * Whisper something into the live conversation — Bella speaks it aloud.
  * Used by reminders firing, background agents reporting back, etc.
