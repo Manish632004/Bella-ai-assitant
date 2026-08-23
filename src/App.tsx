@@ -511,6 +511,50 @@ export default function App() {
     };
   }, [runGuardianEnrollment, reconnectForPersona]);
 
+  // BELLA 6.0 — face capture for the faces module (grab frames from webcam)
+  const handleFaceCapture = useCallback(async (requestId: string, count: number) => {
+    let stream: MediaStream | null = null;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 } } });
+      const video = document.createElement("video");
+      video.srcObject = stream;
+      video.muted = true;
+      video.playsInline = true;
+      await video.play().catch(() => {});
+      await new Promise(r => setTimeout(r, 600)); // exposure settle
+      const canvas = document.createElement("canvas");
+      canvas.width = 480;
+      canvas.height = Math.round((video.videoHeight || 360) * (480 / (video.videoWidth || 640)));
+      const ctx2d = canvas.getContext("2d");
+      const frames: string[] = [];
+      for (let i = 0; i < Math.max(1, count); i++) {
+        if (ctx2d) {
+          ctx2d.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const b64 = canvas.toDataURL("image/jpeg", 0.85).split(",")[1];
+          if (b64) frames.push(b64);
+        }
+        if (i < count - 1) await new Promise(r => setTimeout(r, 500));
+      }
+      stream.getTracks().forEach(t => { try { t.stop(); } catch {} });
+      stream = null;
+      await fetch("/api/bella/faces/capture-result", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requestId, frames }),
+      });
+    } catch (err: any) {
+      console.error("[Faces] capture failed:", err);
+      // Report empty so the tool can answer gracefully.
+      fetch("/api/bella/faces/capture-result", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requestId, frames: [] }),
+      }).catch(() => {});
+    } finally {
+      if (stream) stream.getTracks().forEach(t => { try { t.stop(); } catch {} });
+    }
+  }, []);
+
   const handleBellaEvent = useCallback((event: { type: string } & Record<string, any>) => {
     console.log("[Bella 6.0 Event]", event.type, event);
     switch (event.type) {
@@ -551,6 +595,9 @@ export default function App() {
         break;
       case "whiteboard_close":
         setWbOpen(false);
+        break;
+      case "face_capture":
+        void handleFaceCapture(String(event.requestId || ""), Number(event.count || 1));
         break;
       case "persona_changed":
         // Explicit voice switch — always applies via reconnect.

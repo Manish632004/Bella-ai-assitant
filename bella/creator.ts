@@ -14,7 +14,7 @@ import fs from "fs";
 import path from "path";
 import { Type } from "@google/genai";
 import {
-  readJson, writeJson, dataFilePath, announce, analyzeImage, generateText,
+  readJson, writeJson, dataFilePath, announce, analyzeImage, generateText, runCommand,
 } from "./util";
 import { getCurrentApiKey } from "./util";
 import type { ToolModule } from "./types";
@@ -89,6 +89,13 @@ interface YtConfig {
   apiKey?: string;
   channelId?: string;
   handle?: string;
+  oauth?: {
+    clientId?: string;
+    clientSecret?: string;
+    refreshToken?: string;
+    accessToken?: string;
+    expiresAt?: number;
+  };
 }
 const YT_FILE = dataFilePath("youtube.json");
 const loadYt = () => readJson<YtConfig>(YT_FILE, {});
@@ -121,6 +128,146 @@ async function resolveChannelId(input?: string): Promise<string> {
 }
 
 interface GrowthSnapshot { date: string; subs: number; views: number; videos: number; }
+
+// ---------------------------------------------------------------------------
+// YouTube OAuth (loopback flow) + resumable uploads
+// ---------------------------------------------------------------------------
+const YT_SCOPE = "https://www.googleapis.com/auth/youtube.upload";
+import os from "os";
+
+async function ytAccessToken(): Promise<string> {
+  const cfg = loadYt();
+  const oauth = cfg.oauth;
+  if (!oauth?.clientId || !oauth?.clientSecret || !oauth?.refreshToken) {
+    throw new Error("YouTube account not linked. Say 'link my YouTube account' first — you'll sign in with Google in your browser.");
+  }
+  if (oauth.accessToken && oauth.expiresAt && Date.now() < oauth.expiresAt - 60000) {
+    return oauth.accessToken;
+  }
+  const res = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: oauth.clientId,
+      client_secret: oauth.clientSecret,
+      refresh_token: oauth.refreshToken,
+      grant_type: "refresh_token",
+    }),
+  });
+  if (!res.ok) throw new Error(`Token refresh failed: ${(await res.text()).slice(0, 200)}`);
+  const tok = await res.json() as { access_token: string; expires_in: number };
+  saveYt({ oauth: { ...oauth, accessToken: tok.access_token, expiresAt: Date.now() + tok.expires_in * 1000 } });
+  return tok.access_token;
+}
+
+async function uploadVideoToYouTube(opts: {
+  filePath: string; title: string; description?: string; tags?: string[]; privacy?: string;
+}): Promise<string> {
+  const p = path.resolve(String(opts.filePath).replace(/^~/, os.homedir()));
+  if (!fs.existsSync(p)) throw new Error(`Video file not found: ${p}`);
+  const buf = fs.readFileSync(p);
+  const token = await ytAccessToken();
+
+  const meta = {
+    snippet: {
+      title: String(opts.title || path.basename(p)).slice(0, 100),
+      description: String(opts.description || "").slice(0, 5000),
+      tags: (opts.tags || []).slice(0, 15),
+      categoryId: "22",
+    },
+    status: {
+      privacyStatus: ["public", "unlisted", "private"].includes(String(opts.privacy)) ? String(opts.privacy) : "private",
+      selfDeclaredMadeForKids: false,
+    },
+  };
+
+  const init = await fetch(
+    "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json; charset=UTF-8",
+        "X-Upload-Content-Length": String(buf.length),
+        "X-Upload-Content-Type": "video/mp4",
+      },
+      body: JSON.stringify(meta),
+    },
+  );
+  if (!init.ok) throw new Error(`Upload init failed HTTP ${init.status}: ${(await init.text()).slice(0, 200)}`);
+  const location = init.headers.get("location");
+  if (!location) throw new Error("Upload session URL missing.");
+
+  const put = await fetch(location, {
+    method: "PUT",
+    headers: { "Content-Length": String(buf.length), "Content-Type": "video/mp4" },
+    body: buf,
+  });
+  if (!put.ok) throw new Error(`Upload failed HTTP ${put.status}: ${(await put.text()).slice(0, 200)}`);
+  const done = await put.json() as { id?: string };
+  return done.id || "(uploaded)";
+}
+
+/** Loopback OAuth sign-in — opens the browser and captures the redirect code. */
+async function youtubeLoopbackSignIn(): Promise<{ ok: boolean; message: string }> {
+  const cfg = loadYt();
+  const oauth = cfg.oauth;
+  if (!oauth?.clientId || !oauth?.clientSecret) {
+    return { ok: false, message: "Set your Google Cloud OAuth Client ID & Secret first via configureYouTubeOAuth." };
+  }
+  const http = await import("http");
+  return new Promise((resolve) => {
+    let port = 0;
+    const server = http.createServer(async (req, res) => {
+      try {
+        const url = new URL(req.url || "/", "http://127.0.0.1");
+        const code = url.searchParams.get("code");
+        const err = url.searchParams.get("error");
+        res.writeHead(200, { "Content-Type": "text/html" });
+        res.end(err
+          ? `<h2>Sign-in failed: ${err}</h2><script>setTimeout(()=>close(),1500)</script>`
+          : `<h2>&#10003; BELLA is linked to your channel. You can close this tab.</h2><script>setTimeout(()=>close(),1200)</script>`);
+        if (!code) {
+          server.close();
+          resolve({ ok: false, message: `Sign-in was cancelled (${err}).` });
+          return;
+        }
+        const exchange = await fetch("https://oauth2.googleapis.com/token", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            code,
+            client_id: oauth.clientId!,
+            client_secret: oauth.clientSecret!,
+            redirect_uri: `http://127.0.0.1:${port}`,
+            grant_type: "authorization_code",
+          }),
+        });
+        const tok = await exchange.json() as { refresh_token?: string; error_description?: string };
+        server.close();
+        if (!tok.refresh_token) {
+          resolve({ ok: false, message: `No refresh token granted (${tok.error_description || "unknown"}). Revoke BELLA at myaccount.google.com/permissions and retry so consent shows.` });
+          return;
+        }
+        saveYt({ oauth: { ...oauth, refreshToken: tok.refresh_token } });
+        resolve({ ok: true, message: "YouTube linked! Uploads are unlocked." });
+      } catch (e: any) {
+        try { server.close(); } catch {}
+        resolve({ ok: false, message: e.message });
+      }
+    });
+    server.listen(0, "127.0.0.1", () => {
+      port = (server.address() as any).port;
+      const authUrl =
+        `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(oauth.clientId!)}` +
+        `&redirect_uri=${encodeURIComponent(`http://127.0.0.1:${port}`)}&response_type=code` +
+        `&scope=${encodeURIComponent(YT_SCOPE)}&access_type=offline&prompt=consent`;
+      void runCommand(`start "" "${authUrl}"`, undefined, 8000);
+      console.log("[YouTube] Waiting for OAuth redirect on port", port);
+      setTimeout(() => { try { server.close(); } catch {} resolve({ ok: false, message: "Sign-in timed out after three minutes." }); }, 180000);
+    });
+  });
+}
 
 // ===========================================================================
 // Tool module
@@ -199,6 +346,36 @@ export const creatorModule: ToolModule = {
       name: "ytGrowthSnapshot",
       description: "Take a growth snapshot (subs/views now) and compare against the previous snapshot automatically.",
       parameters: { type: Type.OBJECT, properties: { channel: { type: Type.STRING } } },
+    },
+    // --- youtube uploads (OAuth) ---
+    {
+      name: "configureYouTubeOAuth",
+      description: "Store Google Cloud OAuth Client ID & Secret used to link the user's channel for uploads.",
+      parameters: {
+        type: Type.OBJECT,
+        properties: { clientId: { type: Type.STRING }, clientSecret: { type: Type.STRING } },
+        required: ["clientId", "clientSecret"],
+      },
+    },
+    {
+      name: "linkUpYouTubeAccount",
+      description: "Open a Google sign-in window and link the user's YouTube channel for uploads (one-time consent).",
+      parameters: { type: Type.OBJECT, properties: {} },
+    },
+    {
+      name: "uploadVideoToYouTube",
+      description: "Upload a finished video file to the linked YouTube channel with title, description and tags.",
+      parameters: {
+        type: Type.OBJECT,
+        properties: {
+          filePath: { type: Type.STRING },
+          title: { type: Type.STRING },
+          description: { type: Type.STRING },
+          tags: { type: Type.ARRAY, items: { type: Type.STRING } },
+          privacy: { type: Type.STRING, description: "private (default) | unlisted | public" },
+        },
+        required: ["filePath", "title"],
+      },
     },
   ],
   async execute(name, args, ctx) {
@@ -316,6 +493,28 @@ export const creatorModule: ToolModule = {
         return {
           result: `Since ${new Date(prev.date).toLocaleDateString()} (${days}d): ${dSubs >= 0 ? "+" : ""}${dSubs.toLocaleString()} subscribers, ${dViews >= 0 ? "+" : ""}${dViews.toLocaleString()} views. Now at ${current.subs.toLocaleString()} subs.`,
         };
+      }
+
+      // --- uploads (OAuth) ---
+      case "configureYouTubeOAuth": {
+        saveYt({ oauth: { ...loadYt().oauth, clientId: String(args.clientId), clientSecret: String(args.clientSecret) } });
+        return { result: "OAuth client saved. Next step: 'link my YouTube account'." };
+      }
+      case "linkUpYouTubeAccount": {
+        const out = await youtubeLoopbackSignIn();
+        if (out.ok) announce(out.message);
+        return { result: out.message, ok: out.ok };
+      }
+      case "uploadVideoToYouTube": {
+        announce(`Uploading "${args.title}" to YouTube — I'll confirm when it lands.`);
+        const videoId = await uploadVideoToYouTube({
+          filePath: String(args.filePath),
+          title: String(args.title),
+          description: args.description as string | undefined,
+          tags: Array.isArray(args.tags) ? (args.tags as string[]) : [],
+          privacy: args.privacy as string | undefined,
+        });
+        return { result: `Upload complete! Video ID ${videoId} (${args.privacy || "private"}). Watch at youtu.be/${videoId}` };
       }
     }
     throw new Error(`Unknown creator tool: ${name}`);

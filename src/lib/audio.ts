@@ -403,7 +403,7 @@ export class BellaAudioSession {
             "guardian_enroll", "persona_changed", "persona_info", "hud_move",
             "hud_visibility", "macro_recording", "key_failover",
             "whiteboard_open", "whiteboard_draw", "whiteboard_clear",
-            "whiteboard_save", "whiteboard_close",
+            "whiteboard_save", "whiteboard_close", "face_capture",
           ]);
           if (BELLA_6_EVENTS.has(data.type) && this.onBellaEvent) {
             this.onBellaEvent(data);

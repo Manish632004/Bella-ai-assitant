@@ -246,7 +246,35 @@ export function createPdfBytes(title: string, sections: { heading?: string; body
 // ---------------------------------------------------------------------------
 // Gemini one-shot helpers
 // ---------------------------------------------------------------------------
-const FLASH_MODEL = process.env.BELLA_FLASH_MODEL || "gemini-flash-latest";
+/** Model candidates tried in order when a call 404s; winner gets cached. */
+const MODEL_CANDIDATES = [
+  process.env.BELLA_FLASH_MODEL,
+  "gemini-flash-latest",
+  "gemini-3.5-flash",
+  "gemini-flash-001",
+].filter(Boolean) as string[];
+
+let cachedModel: string | null = null;
+
+async function withModelFallback<T>(fn: (model: string) => Promise<T>): Promise<T> {
+  const order = cachedModel
+    ? [cachedModel, ...MODEL_CANDIDATES.filter(m => m !== cachedModel)]
+    : MODEL_CANDIDATES;
+  let lastErr: unknown;
+  for (const model of order) {
+    try {
+      const out = await fn(model);
+      cachedModel = model;
+      return out;
+    } catch (err: any) {
+      lastErr = err;
+      const msg = String(err?.message || err);
+      if (!/404|not found|NOT_FOUND|is no longer available/i.test(msg)) throw err;
+      console.warn(`[Bella Util] Model "${model}" unavailable, trying next…`);
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+}
 
 /**
  * Pool-resolved API key snapshot. server.ts refreshes this on every live
@@ -265,12 +293,14 @@ export function makeClient(apiKey: string): GoogleGenAI {
 
 export async function generateText(apiKey: string, prompt: string, system?: string): Promise<string> {
   const ai = makeClient(apiKey);
-  const response = await ai.models.generateContent({
-    model: FLASH_MODEL,
-    contents: prompt,
-    ...(system ? { config: { systemInstruction: system } } : {}),
+  return withModelFallback(async (model) => {
+    const response = await ai.models.generateContent({
+      model,
+      contents: prompt,
+      ...(system ? { config: { systemInstruction: system } } : {}),
+    });
+    return (response.text || "").trim();
   });
-  return (response.text || "").trim();
 }
 
 /** Ask Gemini for strict JSON; extracts the first JSON object found. */
@@ -289,14 +319,34 @@ export async function generateJson<T>(apiKey: string, prompt: string, system?: s
 /** Analyze an image frame with the vision-capable flash model. */
 export async function analyzeImage(apiKey: string, jpegBase64: string, prompt: string): Promise<string> {
   const ai = makeClient(apiKey);
-  const response = await ai.models.generateContent({
-    model: FLASH_MODEL,
-    contents: [
-      { inlineData: { mimeType: "image/jpeg", data: jpegBase64 } },
-      prompt,
-    ],
+  return withModelFallback(async (model) => {
+    const response = await ai.models.generateContent({
+      model,
+      contents: [
+        { inlineData: { mimeType: "image/jpeg", data: jpegBase64 } },
+        prompt,
+      ],
+    });
+    return (response.text || "").trim();
   });
-  return (response.text || "").trim();
+}
+
+/**
+ * Multi-image vision call — used for face identification (probe frame vs
+ * enrolled references) and other comparisons.
+ */
+export async function analyzeImages(apiKey: string, images: string[], prompt: string): Promise<string> {
+  const ai = makeClient(apiKey);
+  return withModelFallback(async (model) => {
+    const response = await ai.models.generateContent({
+      model,
+      contents: [
+        ...images.map(data => ({ inlineData: { mimeType: "image/jpeg", data } })),
+        prompt,
+      ],
+    });
+    return (response.text || "").trim();
+  });
 }
 
 // ---------------------------------------------------------------------------

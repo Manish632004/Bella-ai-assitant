@@ -64,6 +64,7 @@ import { registerLiveSession, unregisterLiveSession, analyzeImage, getLiveSessio
 import { recordStep } from "./bella/macros";
 import { guardianRouter } from "./bella/guardian";
 import { phonelinkRouter } from "./bella/phonelink";
+import { facesRouter } from "./bella/faces";
 
 dotenv.config();
 
@@ -1655,6 +1656,7 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
   // ---------------------------------------------------------------------------
   app.use("/api/guardian", express.json({ limit: "20mb" }), guardianRouter);
   app.use("/api/phone", express.json(), phonelinkRouter);
+  app.use("/api/bella/faces", express.json({ limit: "30mb" }), facesRouter);
   app.get("/api/bella/stats", (_req, res) => {
     res.json({
       tools: bellaToolCount,
