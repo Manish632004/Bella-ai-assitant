@@ -1177,6 +1177,64 @@ async function startServer() {
   // ===========================================================================
   // COMPUTER ACTION ENGINE — REST API Endpoints
   // ===========================================================================
+
+  // BELLA 6.0 — GDI screen-frame fallback for the HUD vision loop.
+  // Windows blocks WebRTC capture (WGC/DXGI) for elevated processes; GDI
+  // screenshots keep Bella's vision working regardless.
+  app.get("/api/screen-frame", async (_req, res) => {
+    // 1) Preferred: Python desktop agent (PIL ImageGrab → compact JPEG).
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8000);
+      const r = await fetch(`${DESKTOP_AGENT_URL}/execute`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tool: "takeScreenshot", args: {} }),
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      if (r.ok) {
+        const data: any = await r.json();
+        const b64 = data?.result?.image_base64 || data?.result?.result?.image_base64 || data?.image_base64;
+        if (data && data.ok !== false && typeof b64 === "string" && b64.length > 200) {
+          return res.json({ ok: true, jpegBase64: b64 });
+        }
+      }
+    } catch { /* agent offline — fall through */ }
+
+    // 2) Fallback: inline PowerShell GDI capture → half-scale JPEG → base64.
+    try {
+      const ps = `
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+$b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+$bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+$g = [System.Drawing.Graphics]::FromImage($bmp)
+$g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+$g.Dispose()
+$small = New-Object System.Drawing.Bitmap ([int]($bmp.Width / 2)), ([int]($bmp.Height / 2))
+$g2 = [System.Drawing.Graphics]::FromImage($small)
+$g2.DrawImage($bmp, 0, 0, $small.Width, $small.Height)
+$ms = New-Object System.IO.MemoryStream
+$small.Save($ms, [System.Drawing.Imaging.ImageFormat]::Jpeg)
+[Convert]::ToBase64String($ms.ToArray())
+`;
+      const encoded = Buffer.from(ps, "utf16le").toString("base64");
+      exec(
+        `powershell -NoProfile -NonInteractive -EncodedCommand ${encoded}`,
+        { timeout: 12000, windowsHide: true, maxBuffer: 24 * 1024 * 1024 },
+        (err, stdout) => {
+          const out = (stdout || "").trim();
+          if (!err && out.length > 500 && /^[A-Za-z0-9+/=\r\n]+$/.test(out.slice(0, 200))) {
+            return res.json({ ok: true, jpegBase64: out });
+          }
+          return res.status(502).json({ ok: false, error: "No screen-capture backend available." });
+        },
+      );
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err?.message || String(err) });
+    }
+  });
   app.post("/api/computer/execute", async (req, res) => {
     try {
       const action = req.body;

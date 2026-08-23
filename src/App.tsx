@@ -138,6 +138,38 @@ export default function App() {
     }
   };
 
+  // BELLA 6.0 — GDI fallback: when Windows denies WebRTC capture (elevated
+  // process / driver policy), poll the server's GDI screenshot endpoint so
+  // Bella's vision keeps working.
+  const gdiFrameTimerRef = useRef<any>(null);
+  const [isGdiCapture, setIsGdiCapture] = useState<boolean>(false);
+  const [gdiPreviewSrc, setGdiPreviewSrc] = useState<string>("");
+
+  const startGdiFrameFallback = () => {
+    console.log("[Screen Sharing] WebRTC capture unavailable — engaging GDI fallback via desktop agent.");
+    setIsGdiCapture(true);
+    setIsScreenSharing(true);
+    setIsScreenSharingPaused(false);
+
+    if (stateRef.current === "disconnected") {
+      setSleepReason("none");
+      sessionRef.current?.connect();
+    }
+
+    if (gdiFrameTimerRef.current) clearInterval(gdiFrameTimerRef.current);
+    gdiFrameTimerRef.current = setInterval(async () => {
+      if (isPausedRef.current || !screenVisionRef.current) return;
+      try {
+        const res = await fetch("/api/screen-frame");
+        const data = await res.json();
+        if (data.ok && data.jpegBase64 && sessionRef.current && stateRef.current !== "disconnected") {
+          sessionRef.current.sendVideoFrame(data.jpegBase64);
+          setGdiPreviewSrc(`data:image/jpeg;base64,${data.jpegBase64}`);
+        }
+      } catch { /* agent offline — retry next tick */ }
+    }, 2000);
+  };
+
   const startScreenSharing = async () => {
     setErrorText(null);
     try {
@@ -203,10 +235,18 @@ export default function App() {
       }
 
       // Stop handling when native stop sharing bar button ends
+      const shareStartedAt = Date.now();
       const videoTrack = stream.getVideoTracks()[0];
       if (videoTrack) {
         videoTrack.onended = () => {
-          stopScreenSharing();
+          if (Date.now() - shareStartedAt < 3000) {
+            // Source died instantly — classic sign of OS-level capture denial.
+            console.warn("[Screen Sharing] Capture source ended immediately; engaging GDI fallback.");
+            stopScreenSharing();
+            startGdiFrameFallback();
+          } else {
+            stopScreenSharing();
+          }
         };
       }
 
@@ -225,9 +265,10 @@ export default function App() {
 
     } catch (e: any) {
       console.error("Screen sharing permission declined or missing API:", e);
-      if (e.name !== "NotAllowedError") {
-        setErrorText(`Could not capture screen: ${e.message || e}`);
-      }
+      // BELLA 6.0 — OS denied WebRTC capture; switch to the GDI fallback
+      // instead of showing a dead-end error (capture still works there).
+      setErrorText(null);
+      startGdiFrameFallback();
     }
   };
 
@@ -236,6 +277,13 @@ export default function App() {
       clearInterval(screenIntervalRef.current);
       screenIntervalRef.current = null;
     }
+
+    // BELLA 6.0 — also stop the GDI fallback poller
+    if (gdiFrameTimerRef.current) {
+      clearInterval(gdiFrameTimerRef.current);
+      gdiFrameTimerRef.current = null;
+    }
+    setIsGdiCapture(false);
 
     if (screenStreamRef.current) {
       screenStreamRef.current.getTracks().forEach((track) => {
@@ -1690,21 +1738,37 @@ export default function App() {
 
             {/* Smart Video PIP Preview Holder */}
             <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-slate-900 border border-white/5 mb-3 flex items-center justify-center group select-none">
-              <video
-                ref={(el) => {
-                  if (el && screenStreamRef.current && el.srcObject !== screenStreamRef.current) {
-                    el.srcObject = screenStreamRef.current;
-                    el.muted = true;
-                    el.play().catch(err => console.log("Mini preview stream play issue:", err));
-                  }
-                }}
-                className={`w-full h-full object-cover transition-opacity duration-300 ${
-                  isScreenSharingPaused ? "opacity-30 blur-sm" : "opacity-90"
-                }`}
-                autoPlay
-                playsInline
-                muted
-              />
+              {isGdiCapture ? (
+                gdiPreviewSrc ? (
+                  <img
+                    src={gdiPreviewSrc}
+                    alt="Screen share preview"
+                    className={`w-full h-full object-cover transition-opacity duration-300 ${
+                      isScreenSharingPaused ? "opacity-30 blur-sm" : "opacity-90"
+                    }`}
+                  />
+                ) : (
+                  <span className="text-[10px] font-mono text-slate-500 animate-pulse px-4 text-center">
+                    GDI capture starting…
+                  </span>
+                )
+              ) : (
+                <video
+                  ref={(el) => {
+                    if (el && screenStreamRef.current && el.srcObject !== screenStreamRef.current) {
+                      el.srcObject = screenStreamRef.current;
+                      el.muted = true;
+                      el.play().catch(err => console.log("Mini preview stream play issue:", err));
+                    }
+                  }}
+                  className={`w-full h-full object-cover transition-opacity duration-300 ${
+                    isScreenSharingPaused ? "opacity-30 blur-sm" : "opacity-90"
+                  }`}
+                  autoPlay
+                  playsInline
+                  muted
+                />
+              )}
 
               {isScreenSharingPaused && (
                 <div className="absolute inset-0 flex items-center justify-center">
@@ -1717,7 +1781,7 @@ export default function App() {
               {!isScreenSharingPaused && screenVisionMode && (
                 <div className="absolute top-2 left-2 flex items-center gap-1.5 px-2 py-0.5 rounded bg-cyan-950/50 border border-cyan-400/20 text-[9px] font-mono text-cyan-300">
                   <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-ping" />
-                  <span>Streaming FPS: 0.5</span>
+                  <span>{isGdiCapture ? "GDI Mode · 0.5 FPS" : "Streaming FPS: 0.5"}</span>
                 </div>
               )}
             </div>
