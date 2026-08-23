@@ -51,3 +51,5 @@ plugins/
 activity.json
 faces.json
 toasts.json
+
+desktop_agent/__pycache__/
