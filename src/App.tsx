@@ -658,6 +658,7 @@ export default function App() {
         // Explicit voice switch — always applies via reconnect.
         if (event.theme) setThemeColor(String(event.theme));
         activePersonaIdRef.current = String(event.persona || "");
+        setPersonaId(activePersonaIdRef.current || "bella");
         reconnectForPersona();
         break;
       case "persona_info":
@@ -667,8 +668,10 @@ export default function App() {
         if (activePersonaIdRef.current === null) {
           // First announcement of this app run — adopt it silently.
           activePersonaIdRef.current = String(event.persona || "");
+          setPersonaId(activePersonaIdRef.current || "bella");
         } else if (String(event.persona || "") !== activePersonaIdRef.current) {
           activePersonaIdRef.current = String(event.persona || "");
+          setPersonaId(activePersonaIdRef.current || "bella");
           reconnectForPersona();
         }
         break;
@@ -679,6 +682,7 @@ export default function App() {
 
   const [activeEmotion, setActiveEmotion] = useState<BellaEmotion>("idle");
   const [themeColor, setThemeColor] = useState<string>("charcoal");
+  const [personaId, setPersonaId] = useState<string>("bella");
   const [userCaption, setUserCaption] = useState<string>("");
   const [characterState, setCharacterState] = useState<"idle" | "thinking" | "talking">("idle");
   const [isMiniMode, setIsMiniMode] = useState<boolean>(false);
@@ -1494,6 +1498,7 @@ export default function App() {
           characterState={characterState}
           isMiniMode={isMiniMode}
           onToggleMiniMode={() => setIsMiniMode(!isMiniMode)}
+          personaId={personaId}
         />
       </div>
 

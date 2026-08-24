@@ -24,6 +24,7 @@ interface BellaCoreVisualizerProps {
   characterState: "idle" | "thinking" | "talking";
   isMiniMode?: boolean;
   onToggleMiniMode?: () => void;
+  personaId?: string; // bella | friday | venom
 }
 
 export const BellaCoreVisualizer: React.FC<BellaCoreVisualizerProps> = ({
@@ -34,9 +35,13 @@ export const BellaCoreVisualizer: React.FC<BellaCoreVisualizerProps> = ({
   characterState,
   isMiniMode = false,
   onToggleMiniMode,
+  personaId = "bella",
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const miniCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const animationRef = useRef<number | null>(null);
+  const miniAnimationRef = useRef<number | null>(null);
+  const isPersonaCanvas = personaId === "friday" || personaId === "venom";
   
   // Video element refs for character state machine
   const idleVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -137,7 +142,204 @@ export const BellaCoreVisualizer: React.FC<BellaCoreVisualizerProps> = ({
     }
   };
 
-  // Main high speed Canvas graphics rendering loop
+  // ==========================================
+  // Persona-specific canvas scenes (Friday / Venom) + Bella's voice orb.
+  // All are driven by the live session's frequency data.
+  // ==========================================
+  const freqRef = useRef<Uint8Array>(new Uint8Array(128));
+  const venomTendrilsRef = useRef<Array<{ a: number; len: number; sp: number; ph: number }>>([]);
+  const fridayRotRef = useRef<number>(0);
+
+  const drawBellaOrb = (ctx: CanvasRenderingContext2D, cx: number, cy: number, R: number, t: number, vol: number, freq: Uint8Array) => {
+    const pulse = 1 + vol * 0.35;
+    const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 1.5 * pulse);
+    core.addColorStop(0, "rgba(233,213,255,0.95)");
+    core.addColorStop(0.25, "rgba(192,132,252,0.55)");
+    core.addColorStop(0.6, "rgba(147,51,234,0.22)");
+    core.addColorStop(1, "rgba(88,28,135,0)");
+    ctx.save();
+    ctx.shadowColor = "rgba(168,85,247,0.9)";
+    ctx.shadowBlur = 40 + vol * 60;
+    ctx.fillStyle = core;
+    ctx.beginPath();
+    ctx.arc(cx, cy, R * 1.35 * pulse, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Circular waveform ring synced to voice frequencies
+    ctx.beginPath();
+    const steps = freq.length;
+    for (let i = 0; i <= steps; i++) {
+      const f = freq[i % steps] / 255;
+      const ang = (i / steps) * Math.PI * 2 - Math.PI / 2;
+      const r = R * (1.15 + f * 0.55 + vol * 0.12);
+      const x = cx + Math.cos(ang) * r;
+      const y = cy + Math.sin(ang) * r * 0.92; // slightly elliptical
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.strokeStyle = `rgba(216,180,254,${0.5 + vol * 0.45})`;
+    ctx.lineWidth = 2.2;
+    ctx.stroke();
+    ctx.restore();
+  };
+
+  const drawFridayScene = (ctx: CanvasRenderingContext2D, w: number, h: number, t: number, vol: number, freq: Uint8Array) => {
+    const cx = w / 2, cy = h / 2;
+    const R = Math.min(w, h) * 0.26;
+    fridayRotRef.current += 0.004 + vol * 0.02;
+    const rot = fridayRotRef.current;
+
+    ctx.save();
+    ctx.clearRect(0, 0, w, h);
+
+    // Faint tactical grid backdrop
+    ctx.strokeStyle = "rgba(34,211,238,0.05)";
+    ctx.lineWidth = 1;
+    for (let gx = 0; gx < w; gx += 48) { ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, h); ctx.stroke(); }
+    for (let gy = 0; gy < h; gy += 48) { ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(w, gy); ctx.stroke(); }
+
+    ctx.translate(cx, cy);
+
+    // Rotating arc groups (Iron-Man-Jarvis style)
+    for (let g = 0; g < 3; g++) {
+      const rr = R * (0.72 + g * 0.24);
+      const dir = g % 2 === 0 ? 1 : -1;
+      const segs = 4 + g * 2;
+      for (let sgi = 0; sgi < segs; sgi++) {
+        const start = rot * dir + (sgi / segs) * Math.PI * 2;
+        const span = (Math.PI * 2 / segs) * (0.42 + (g === 1 ? freq[(g * 7 + sgi * 5) % freq.length] / 400 : vol * 0.25));
+        ctx.beginPath();
+        ctx.arc(0, 0, rr, start, start + span);
+        ctx.strokeStyle = g === 1 ? "rgba(251,191,36,0.75)" : "rgba(34,211,238,0.85)";
+        ctx.lineWidth = g === 0 ? 2.4 : 1.4;
+        ctx.shadowColor = g === 1 ? "rgba(251,191,36,0.8)" : "rgba(34,211,238,0.8)";
+        ctx.shadowBlur = 10 + vol * 14;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+      }
+    }
+
+    // Center reticle
+    ctx.strokeStyle = "rgba(34,211,238,0.9)";
+    ctx.lineWidth = 1.6;
+    const ret = R * 0.3 * (1 + vol * 0.18);
+    ctx.beginPath(); ctx.arc(0, 0, ret, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-ret * 1.5, 0); ctx.lineTo(-ret * 0.7, 0);
+    ctx.moveTo(ret * 0.7, 0); ctx.lineTo(ret * 1.5, 0);
+    ctx.moveTo(0, -ret * 1.5); ctx.lineTo(0, -ret * 0.7);
+    ctx.moveTo(0, ret * 0.7); ctx.lineTo(0, ret * 1.5);
+    ctx.stroke();
+    ctx.fillStyle = `rgba(165,243,252,${0.5 + vol * 0.5})`;
+    ctx.beginPath(); ctx.arc(0, 0, 4 + vol * 5, 0, Math.PI * 2); ctx.fill();
+
+    ctx.restore();
+
+    // Bottom EQ bars
+    const bars = 40, bw = w / bars;
+    ctx.fillStyle = "rgba(34,211,238,0.65)";
+    for (let i = 0; i < bars; i++) {
+      const v = freq[Math.floor((i / bars) * freq.length)] / 255;
+      const bh = 6 + v * 70 * (0.5 + vol);
+      ctx.fillRect(i * bw + 2, h - 14 - bh, bw - 4, bh);
+    }
+  };
+
+  const drawVenomScene = (ctx: CanvasRenderingContext2D, w: number, h: number, t: number, vol: number, freq: Uint8Array) => {
+    const cx = w / 2, cy = h / 2;
+    const R = Math.min(w, h) * 0.24;
+
+    if (!venomTendrilsRef.current.length) {
+      venomTendrilsRef.current = Array.from({ length: 14 }, (_, i) => ({
+        a: (i / 14) * Math.PI * 2,
+        len: 0.4 + Math.random() * 0.8,
+        sp: 0.5 + Math.random(),
+        ph: Math.random() * Math.PI * 2,
+      }));
+    }
+
+    ctx.save();
+    ctx.clearRect(0, 0, w, h);
+
+    // Blood vignette
+    const vg = ctx.createRadialGradient(cx, cy, R * 0.4, cx, cy, Math.max(w, h) * 0.6);
+    vg.addColorStop(0, "rgba(0,0,0,0)");
+    vg.addColorStop(1, `rgba(120,10,20,${0.10 + vol * 0.16})`);
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.translate(cx, cy);
+
+    // Symbiote blob — jagged noise-perturbed outline
+    ctx.beginPath();
+    const pts = 64;
+    for (let i = 0; i <= pts; i++) {
+      const ang = (i / pts) * Math.PI * 2;
+      const n =
+        Math.sin(ang * 5 + t * 0.0016) * 0.06 +
+        Math.sin(ang * 9 - t * 0.0023) * 0.04 +
+        Math.sin(ang * 17 + t * 0.0031) * 0.03 +
+        vol * 0.16 * Math.abs(Math.sin(ang * 3 + t * 0.005));
+      const r = R * (1 + n) * (1 + vol * 0.12);
+      const x = Math.cos(ang) * r;
+      const y = Math.sin(ang) * r * 0.95;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    const bodyG = ctx.createRadialGradient(0, 0, R * 0.15, 0, 0, R * 1.2);
+    bodyG.addColorStop(0, "#101018");
+    bodyG.addColorStop(0.75, "#05050a");
+    bodyG.addColorStop(1, "#000");
+    ctx.fillStyle = bodyG;
+    ctx.shadowColor = `rgba(220,38,38,${0.5 + vol * 0.5})`;
+    ctx.shadowBlur = 30 + vol * 70;
+    ctx.fill();
+    ctx.strokeStyle = `rgba(239,68,68,${0.55 + vol * 0.4})`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // White angular eyes that narrow with volume
+    const squint = 1 - Math.min(0.7, vol * 1.4);
+    ctx.fillStyle = "rgba(240,240,245,0.95)";
+    for (const side of [-1, 1]) {
+      ctx.save();
+      ctx.translate(side * R * 0.34, -R * 0.18);
+      ctx.rotate(side * 0.42);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, R * 0.30, R * 0.085 * squint + 2, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Lashing tendrils
+    for (const td of venomTendrilsRef.current) {
+      const ang = td.a + Math.sin(t * 0.0008 * td.sp + td.ph) * 0.35;
+      const reach = R * (1.05 + td.len * (0.5 + vol * 1.1) * (0.6 + 0.4 * Math.sin(t * 0.003 * td.sp + td.ph)));
+      const x1 = Math.cos(ang) * R * 0.98, y1 = Math.sin(ang) * R * 0.94;
+      const x2 = Math.cos(ang) * reach, y2 = Math.sin(ang) * reach;
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.quadraticCurveTo(
+        Math.cos(ang - 0.25) * reach * 0.8, Math.sin(ang - 0.25) * reach * 0.8,
+        x2, y2
+      );
+      ctx.strokeStyle = `rgba(20,20,26,0.95)`;
+      ctx.lineWidth = 5 + vol * 4;
+      ctx.lineCap = "round";
+      ctx.stroke();
+      ctx.strokeStyle = `rgba(239,68,68,${0.35 + vol * 0.4})`;
+      ctx.lineWidth = 1.6;
+      ctx.stroke();
+    }
+    // Inner red heartbeat
+    const hb = (Math.sin(t * 0.004) + 1) / 2;
+    ctx.fillStyle = `rgba(185,28,28,${0.10 + hb * 0.16 + vol * 0.2})`;
+    ctx.beginPath(); ctx.arc(0, R * 0.05, R * 0.32 * (1 + hb * 0.15), 0, Math.PI * 2); ctx.fill();
+
+    ctx.restore();
+  };
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -191,6 +393,7 @@ export const BellaCoreVisualizer: React.FC<BellaCoreVisualizerProps> = ({
       if (activeAnalyser) {
         try {
           activeAnalyser.getByteFrequencyData(dataArray);
+          activeAnalyser.getByteFrequencyData(freqRef.current);
           let sum = 0;
           for (let i = 0; i < bufferLength; i++) {
             sum += dataArray[i];
@@ -211,6 +414,21 @@ export const BellaCoreVisualizer: React.FC<BellaCoreVisualizerProps> = ({
       mouseRef.current.y += (targetMouseRef.current.y - mouseRef.current.y) * 0.05;
 
       const centerX = width / 2;
+
+      // ==========================================
+      // PERSONA BRANCH — Friday & Venom replace the whole scene.
+      // ==========================================
+      if (personaId === "friday" || personaId === "venom") {
+        const vol = speechVolumeRef.current;
+        ctx.clearRect(0, 0, width, height);
+        if (personaId === "friday") {
+          drawFridayScene(ctx, width, height, systemTime, vol, freqRef.current);
+        } else {
+          drawVenomScene(ctx, width, height, systemTime, vol, freqRef.current);
+        }
+        animationRef.current = requestAnimationFrame(render);
+        return;
+      }
 
       // ==========================================
       // 1. DRAW GRAND STAGE VOLUMETRIC PROJECTOR BEAM (Cinematic Glow Backlight)
@@ -287,7 +505,34 @@ export const BellaCoreVisualizer: React.FC<BellaCoreVisualizerProps> = ({
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [session, state, themeColor, activeEmotion, characterState]);
+  }, [session, state, themeColor, activeEmotion, characterState, personaId]);
+
+  // Mini-mode persona canvas (Friday/Venom PiP) — separate small rAF loop.
+  useEffect(() => {
+    if (!isMiniMode || !isPersonaCanvas) return;
+    const canvas = miniCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    let raf = 0;
+    const loop = () => {
+      const w = (canvas.width = canvas.offsetWidth || 240);
+      const h = (canvas.height = canvas.offsetHeight || 180);
+      let active = null;
+      if (state === "speaking" && session?.outputAnalyser) active = session.outputAnalyser;
+      else if (state === "listening" && session?.inputAnalyser) active = session.inputAnalyser;
+      try { active?.getByteFrequencyData(freqRef.current); } catch {}
+      let sum = 0;
+      for (let i = 0; i < freqRef.current.length; i++) sum += freqRef.current[i];
+      const vol = sum / freqRef.current.length / 255;
+      const t = performance.now();
+      if (personaId === "friday") drawFridayScene(ctx, w, h, t, vol, freqRef.current);
+      else drawVenomScene(ctx, w, h, t, vol, freqRef.current);
+      raf = requestAnimationFrame(loop);
+    };
+    loop();
+    return () => cancelAnimationFrame(raf);
+  }, [isMiniMode, isPersonaCanvas, personaId, session, state]);
 
   const handlePointerDragStart = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
@@ -352,7 +597,7 @@ export const BellaCoreVisualizer: React.FC<BellaCoreVisualizerProps> = ({
           <div className="absolute inset-2 rounded-full blur-3xl opacity-35 bg-indigo-500/20 pointer-events-none animate-pulse-glow" />
 
           {/* Active Status Glass Chip */}
-          <div 
+          <div
             className="absolute bottom-3 right-4 z-50 flex items-center gap-2 px-3 py-1 rounded-full glass-panel text-[10px] font-sans font-medium text-slate-200 pointer-events-auto shadow-lg"
           >
             <span className={`w-2 h-2 rounded-full ${
@@ -363,8 +608,18 @@ export const BellaCoreVisualizer: React.FC<BellaCoreVisualizerProps> = ({
             <span className="capitalize tracking-wide">{characterState}</span>
           </div>
 
+          {/* Persona canvas (Friday/Venom) in PiP mode */}
+          {isPersonaCanvas && (
+            <canvas
+              ref={miniCanvasRef}
+              className="relative w-full h-full z-10 pointer-events-none"
+              onDoubleClick={() => onToggleMiniMode && onToggleMiniMode()}
+            />
+          )}
+
           {/* Character Video container - grabbing anywhere on the character drags Bella */}
-          <div 
+          {!isPersonaCanvas && (
+          <div
             onDoubleClick={() => onToggleMiniMode && onToggleMiniMode()}
             className="relative w-full h-full flex items-center justify-center overflow-hidden cursor-grab active:cursor-grabbing"
             title="Drag anywhere to move Bella. Double-click or click Taskbar icon for Full Stage."
@@ -421,6 +676,7 @@ export const BellaCoreVisualizer: React.FC<BellaCoreVisualizerProps> = ({
               onError={() => handleVideoError("talking")}
             />
           </div>
+          )}
         </div>
       ) : (
         // FULL STAGE CHARACTER
@@ -433,6 +689,7 @@ export const BellaCoreVisualizer: React.FC<BellaCoreVisualizerProps> = ({
             <div className="absolute inset-0 rounded-[2.5rem] blur-[30px] opacity-20 bg-cyan-600/15 pointer-events-none mix-blend-screen" />
 
             {/* IDLE VIDEO */}
+            {!isPersonaCanvas && (
             <video
               ref={idleVideoRef}
               src="/assets/idle.mp4"
@@ -449,8 +706,10 @@ export const BellaCoreVisualizer: React.FC<BellaCoreVisualizerProps> = ({
               }}
               onError={() => handleVideoError("idle")}
             />
+            )}
 
             {/* THINKING VIDEO */}
+            {!isPersonaCanvas && (
             <video
               ref={thinkingVideoRef}
               src="/assets/thinking.mp4"
@@ -466,8 +725,10 @@ export const BellaCoreVisualizer: React.FC<BellaCoreVisualizerProps> = ({
               }}
               onError={() => handleVideoError("thinking")}
             />
+            )}
 
             {/* TALKING VIDEO */}
+            {!isPersonaCanvas && (
             <video
               ref={talkingVideoRef}
               src="/assets/talking.mp4"
@@ -483,6 +744,7 @@ export const BellaCoreVisualizer: React.FC<BellaCoreVisualizerProps> = ({
               }}
               onError={() => handleVideoError("talking")}
             />
+            )}
 
             {/* Faint cybernetic visual edge grid guard */}
             <div className="absolute inset-0 rounded-[2.5rem] border border-white/5 pointer-events-none bg-radial-gradient from-transparent to-black/35" />
