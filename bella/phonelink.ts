@@ -58,18 +58,43 @@ function pushHistory(deviceId: string, text: string): void {
   history.set(deviceId, list.slice(-50));
 }
 
-function lanAddress(): string {
-  const nets = os.networkInterfaces();
-  for (const list of Object.values(nets)) {
+let cachedLanIp: string | null = null;
+async function lanAddress(): Promise<string> {
+  if (cachedLanIp) return cachedLanIp;
+  // Prefer the adapter whose subnet contains the default gateway (skips
+  // VMware/Hyper-V virtual adapters that break QR pairing).
+  try {
+    const { exec } = await import("child_process");
+    const gw = await new Promise<string>((resolve) => {
+      exec("powershell -NoProfile -NonInteractive -Command \"(Get-NetRoute -DestinationPrefix '0.0.0.0/0' | Sort-Object RouteMetric | Select-Object -First 1).NextHop\"", (e, o) => resolve(e ? "" : String(o).trim()));
+    });
+    const gwIp = gw.replace(/\r/g, "");
+    if (gwIp && /^\d+\.\d+\.\d+\.\d+$/.test(gwIp)) {
+      const gwParts = gwIp.split(".").slice(0, 3).join(".");
+      for (const list of Object.values(os.networkInterfaces())) {
+        for (const net of list || []) {
+          if (net.family === "IPv4" && !net.internal && net.address.startsWith(gwParts + ".")) {
+            cachedLanIp = net.address;
+            return cachedLanIp;
+          }
+        }
+      }
+    }
+  } catch { /* fall through */ }
+  // Fallback: first non-internal IPv4 that isn't a common virtual range.
+  for (const list of Object.values(os.networkInterfaces())) {
     for (const net of list || []) {
-      if (net.family === "IPv4" && !net.internal) return net.address;
+      if (net.family === "IPv4" && !net.internal && !/^169\.254\./.test(net.address)) {
+        cachedLanIp = net.address;
+        return cachedLanIp;
+      }
     }
   }
   return "localhost";
 }
 
-export function getPairUrl(): string {
-  return `http://${lanAddress()}:${process.env.PORT || 3000}/api/phone/link?t=${pairToken}`;
+export async function getPairUrl(): Promise<string> {
+  return `http://${await lanAddress()}:${process.env.PORT || 3000}/api/phone/link?t=${pairToken}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -134,8 +159,19 @@ export const phonelinkRouter = express.Router();
 
 phonelinkRouter.get("/link", (_req, res) => res.send(LINK_PAGE));
 
-phonelinkRouter.get("/pair-info", (_req, res) => {
-  res.json({ pairUrl: getPairUrl(), devices: loadDevices().map(d => ({ id: d.id, name: d.name, lastSeen: d.lastSeen })) });
+phonelinkRouter.get("/pair-info", async (_req, res) => {
+  const candidates: string[] = [];
+  for (const list of Object.values(os.networkInterfaces())) {
+    for (const net of list || []) {
+      if (net.family === "IPv4" && !net.internal && !/^169\.254\./.test(net.address)) candidates.push(net.address);
+    }
+  }
+  res.json({
+    pairUrl: await getPairUrl(),
+    allUrls: candidates.map(ip => `http://${ip}:${process.env.PORT || 3000}/api/phone/link?t=${pairToken}`),
+    hint: "If the QR doesn't load, allow BELLA (Node.js) through Windows Firewall for Private networks, and make sure the phone is on the same Wi-Fi.",
+    devices: loadDevices().map(d => ({ id: d.id, name: d.name, lastSeen: d.lastSeen })),
+  });
 });
 
 phonelinkRouter.post("/register", (req, res) => {
@@ -261,7 +297,7 @@ export const phonelinkModule: ToolModule = {
     switch (name) {
       case "getPhonePairing": {
         return {
-          result: `Pairing link: ${getPairUrl()} — show it as a QR code in Settings → Phone Link, scan it with the phone and give it a name.`,
+          result: `Pairing link: ${await getPairUrl()} — show it as a QR code in Settings → Phone Link, scan it with the phone and give it a name.`,
           devices: loadDevices().map(d => d.name),
         };
       }

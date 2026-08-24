@@ -167,8 +167,10 @@ async function uploadVideoToYouTube(opts: {
 }): Promise<string> {
   const p = path.resolve(String(opts.filePath).replace(/^~/, os.homedir()));
   if (!fs.existsSync(p)) throw new Error(`Video file not found: ${p}`);
-  const buf = fs.readFileSync(p);
   const token = await ytAccessToken();
+  // Recordings land as .webm — declare the real mime instead of hardcoding mp4.
+  const mime = /\.webm$/i.test(p) ? "video/webm" : /\.mov$/i.test(p) ? "video/quicktime" : /\.mkv$/i.test(p) ? "video/x-matroska" : "video/mp4";
+  const size = fs.statSync(p).size;
 
   const meta = {
     snippet: {
@@ -190,8 +192,8 @@ async function uploadVideoToYouTube(opts: {
       headers: {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json; charset=UTF-8",
-        "X-Upload-Content-Length": String(buf.length),
-        "X-Upload-Content-Type": "video/mp4",
+        "X-Upload-Content-Length": String(size),
+        "X-Upload-Content-Type": mime,
       },
       body: JSON.stringify(meta),
     },
@@ -200,11 +202,17 @@ async function uploadVideoToYouTube(opts: {
   const location = init.headers.get("location");
   if (!location) throw new Error("Upload session URL missing.");
 
+  // Stream the file — a multi-GB recording must never be buffered fully in RAM.
+  const { Readable } = await import("stream");
+  const stream = fs.createReadStream(p);
+  const nodeStream = Readable.toWeb(stream) as unknown as ReadableStream;
   const put = await fetch(location, {
     method: "PUT",
-    headers: { "Content-Length": String(buf.length), "Content-Type": "video/mp4" },
-    body: buf,
-  });
+    duplex: "half",
+    headers: { "Content-Length": String(size), "Content-Type": mime },
+    body: nodeStream,
+  } as RequestInit);
+  try { stream.destroy(); } catch {}
   if (!put.ok) throw new Error(`Upload failed HTTP ${put.status}: ${(await put.text()).slice(0, 200)}`);
   const done = await put.json() as { id?: string };
   return done.id || "(uploaded)";
@@ -439,7 +447,8 @@ export const creatorModule: ToolModule = {
       }
       case "ytRecentUploads": {
         const id = await resolveChannelId(args.channel as string | undefined);
-        const limit = String(Number(args.limit || 5));
+        // YouTube caps search.list maxResults at 50 — clamp so the API never 400s.
+        const limit = String(Math.min(50, Math.max(1, Math.round(Number(args.limit || 5)))));
         const s = await ytApi<{ items: { id: { videoId: string }; snippet: { title: string; publishedAt: string } }[] }>(
           "search", { part: "snippet", channelId: id, order: "date", type: "video", maxResults: limit });
         if (!s.items?.length) return { result: "No uploads found." };
@@ -452,7 +461,8 @@ export const creatorModule: ToolModule = {
       }
       case "ytAudienceSentiment": {
         let videoId = String(args.video || "");
-        const urlMatch = videoId.match(/[?&]v=([\w-]{6,})/);
+        // Accept watch URLs, youtu.be short links and /shorts/ links.
+        const urlMatch = videoId.match(/(?:[?&]v=|youtu\.be\/|\/shorts\/|\/embed\/)([\w-]{6,})/);
         if (urlMatch) videoId = urlMatch[1];
         if (!/^[\w-]{10,}$/.test(videoId)) {
           const channelId = await resolveChannelId(undefined);

@@ -39,6 +39,7 @@ export function markSpeaker(identity: "owner" | "guest" | "unknown"): void {
   lastSpeaker = identity;
   const s = loadStore();
   s.recognitions.push({ time: new Date().toISOString(), identity, score: -1 });
+  s.recognitions = s.recognitions.slice(-50);
   saveStore(s);
 }
 
@@ -164,9 +165,11 @@ export function identifySpeaker(base64Wav: string): { identity: "owner" | "guest
   for (const p of store.prints) best = Math.max(best, cosine(probe, p));
   const identity = best >= store.threshold ? "owner" : best >= store.threshold - 0.06 ? "guest" : "unknown";
   if (identity !== "unknown") markSpeaker(identity as "owner" | "guest");
-  store.recognitions.push({ time: new Date().toISOString(), identity, score: Math.round(best * 1000) / 1000 });
-  store.recognitions = store.recognitions.slice(-50);
-  saveStore(store);
+  // Re-load so we don't clobber whatever markSpeaker just persisted.
+  const fresh = loadStore();
+  fresh.recognitions.push({ time: new Date().toISOString(), identity, score: Math.round(best * 1000) / 1000 });
+  fresh.recognitions = fresh.recognitions.slice(-50);
+  saveStore(fresh);
   return { identity, score: Math.round(best * 1000) / 1000 };
 }
 

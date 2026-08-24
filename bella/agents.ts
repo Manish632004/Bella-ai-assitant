@@ -53,10 +53,17 @@ function persistJobs(): void {
 
 // Load previous run's jobs; anything still marked running was interrupted.
 (function loadJobs() {
+  let changed = false;
   for (const j of readJson<AgentJob[]>(JOBS_FILE, [])) {
-    if (j.status === "running" || j.status === "queued") j.status = "failed";
+    if (j.status === "running" || j.status === "queued") {
+      j.status = "failed";
+      changed = true;
+    }
     jobs.set(j.id, j);
   }
+  // Persist the corrected statuses so a crash-loop doesn't keep reporting
+  // phantom "running" jobs to agentStatus / the briefing.
+  if (changed) persistJobs();
 })();
 
 const MAX_PARALLEL = 6;
@@ -113,7 +120,14 @@ function newId(prefix: string): string {
 // ---------------------------------------------------------------------------
 // Shared helpers for agent loops
 // ---------------------------------------------------------------------------
-const DANGEROUS = /(\brm\s+-rf\s+[/\\]\s*$)|(\bformat\b\s*[a-z]:)|(\bshutdown\b)|(\bdel\s+\/[sq]\s+C:\\)/i;
+const DANGEROUS = new RegExp([
+  "\\brm\\s+(-[a-z]*r[a-z]*f|-rf|--recursive)\\b",       // rm -rf anything, any position
+  "\\bformat\\b\\s*[a-z]:",
+  "\\bshutdown\\b",
+  "\\bdel\\s+\\/[sq]\\s+[a-z]:\\\\",
+  "\\bremove-item\\b[^&|;]*-recurse",                     // Remove-Item -Recurse
+  "\\brd\\s+\\/s\\b",
+].join("|"), "i");
 
 async function safeRunCommand(cmd: string, cwd?: string, timeoutMs = 120000) {
   if (DANGEROUS.test(cmd)) return { ok: false, stdout: "", stderr: "Blocked by BELLA safety filter." };
@@ -485,6 +499,13 @@ export function spawnJob(type: AgentType, mission: string, opts?: { exportDocx?:
         await runCodingAgent(job, opts?.visibleMode ?? false);
         break;
       case "hermes":
+        // Graceful fallback: if the Hermes CLI isn't installed, run the job
+        // with the built-in agent instead of failing outright.
+        if (!(await hasCli("hermes"))) {
+          step(job, "Hermes CLI not installed — running the mission with BELLA's built-in agent instead.");
+          await runGenericAgent(job);
+          break;
+        }
         await runHermesAgent(job);
         break;
       default:
@@ -598,7 +619,7 @@ export const agentsModule: ToolModule = {
         const missions = Array.isArray(args.missions) ? (args.missions as string[]) : [];
         if (!missions.length) throw new Error("No missions given.");
         const ids = missions.map(m => {
-          const job = spawnJob((String(args.agent) || "generic") as AgentType, m);
+          const job = spawnJob((args.agent ? String(args.agent) : "generic") as AgentType, m);
           return `${job.id}: ${short(m, 50)}`;
         });
         return { result: `Spawned ${ids.length} parallel agents: ${ids.join(", ")}` };

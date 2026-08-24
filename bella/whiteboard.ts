@@ -74,6 +74,11 @@ export const whiteboardModule: ToolModule = {
                 x2: { type: Type.NUMBER }, y2: { type: Type.NUMBER },
                 w: { type: Type.NUMBER }, h: { type: Type.NUMBER }, r: { type: Type.NUMBER },
                 text: { type: Type.STRING }, color: { type: Type.STRING }, width: { type: Type.NUMBER },
+                points: {
+                  type: Type.ARRAY,
+                  items: { type: Type.ARRAY, items: { type: Type.NUMBER } },
+                  description: "For path elements: [[x,y],[x,y],...] polyline points.",
+                },
               },
             },
             description: "List of elements to add.",

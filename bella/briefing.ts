@@ -44,9 +44,11 @@ function spendToday(): string {
   const cutoff = new Date(); cutoff.setHours(0, 0, 0, 0);
   const list = loadExpenses().filter(e => new Date(e.date) >= cutoff);
   if (!list.length) return "";
-  const total = list.reduce((s, e) => s + e.amount, 0);
-  const cur = list[0].currency;
-  return `spent ${total.toFixed(0)} ${cur} so far today across ${list.length} transaction${list.length > 1 ? "s" : ""}`;
+  // Group by currency — summing ₹ and $ together produces nonsense.
+  const byCur = new Map<string, number>();
+  for (const e of list) byCur.set(e.currency, (byCur.get(e.currency) || 0) + e.amount);
+  const parts = [...byCur.entries()].map(([cur, total]) => `${total.toFixed(0)} ${cur}`);
+  return `spent ${parts.join(" + ")} so far today across ${list.length} transaction${list.length > 1 ? "s" : ""}`;
 }
 
 function growthLine(): string {

@@ -181,6 +181,20 @@ export const extrasModule: ToolModule = {
       parameters: { type: Type.OBJECT, properties: { index: { type: Type.INTEGER } }, required: ["index"] },
     },
     {
+      name: "fuzzyFindAndOpen",
+      description: "Fuzzy-search a file by partial name across Desktop/Downloads/Documents and OPEN the best match. Use when the user says 'find my invoice pdf and open it'.",
+      parameters: {
+        type: Type.OBJECT,
+        properties: { query: { type: Type.STRING }, extension: { type: Type.STRING, description: "Optional filter like pdf/docx/jpg." } },
+        required: ["query"],
+      },
+    },
+    {
+      name: "sleepNow",
+      description: "Put BELLA to sleep immediately (ends the live session; wake word stays armed). Used for 'so jao' / 'go to sleep'.",
+      parameters: { type: Type.OBJECT, properties: {} },
+    },
+    {
       name: "moveHud",
       description: "Move BELLA's own window by voice: direction ('left','right','up','down') or corner ('bottom-left','top-right','center' etc.). Also accepts 'mini'/'restore'.",
       parameters: {
@@ -337,8 +351,49 @@ export const extrasModule: ToolModule = {
         const idx = Number(args.index || 1);
         const entry = clipHistory.slice(-idx)[0];
         if (!entry) throw new Error(`No clipboard history item #${idx}.`);
-        await runCommand(`powershell -NoProfile -NonInteractive -Command "Set-Clipboard -Value '${entry.text.replace(/'/g, "''").slice(0, 800)}'"`, undefined, 8000);
+        // Base64 payload — slicing after quote-doubling can leave unbalanced
+        // quotes, and raw newlines break cmd parsing entirely.
+        const b64 = Buffer.from(entry.text.slice(0, 800), "utf8").toString("base64");
+        await runCommand(
+          `powershell -NoProfile -NonInteractive -Command "Set-Clipboard -Value ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${b64}')))"`,
+          undefined, 8000,
+        );
         return { result: `Copied back to clipboard: "${entry.text.slice(0, 60)}"` };
+      }
+
+      case "fuzzyFindAndOpen": {
+        const q = String(args.query || "").toLowerCase();
+        const ext = args.extension ? `.${String(args.extension).replace(/\./g, "")}` : "";
+        const roots = ["Desktop", "Downloads", "Documents", "Pictures", "Videos"].map(d => path.join(HOME(), d));
+        const tokens = q.split(/\s+/).filter(Boolean);
+        const results: { file: string; score: number }[] = [];
+        const scan = (dir: string, depth: number): void => {
+          if (depth > 4) return;
+          let entries: fs.Dirent[] = [];
+          try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+          for (const e of entries) {
+            const full = path.join(dir, e.name);
+            if (e.isDirectory()) {
+              if (!["node_modules", ".git"].includes(e.name)) scan(full, depth + 1);
+              continue;
+            }
+            if (ext && !e.name.toLowerCase().endsWith(ext)) continue;
+            const name = e.name.toLowerCase();
+            let score = 0;
+            for (const t of tokens) if (name.includes(t)) score += t.length * 2;
+            if (score > 0) results.push({ file: full, score });
+          }
+        };
+        for (const root of roots) scan(root, 0);
+        if (!results.length) return { result: `Couldn't find anything matching "${args.query}" in your common folders.` };
+        results.sort((a, b) => b.score - a.score);
+        const best = results.slice(0, 3).map(r => r.file);
+        await runCommand(`start "" "${best[0].replace(/"/g, "")}"`, undefined, 10000);
+        return { result: `Opened ${path.basename(best[0])}${results.length > 1 ? ` (best of ${results.length} matches — others: ${best.slice(1).map(f => path.basename(f)).join(", ")})` : ""}.` };
+      }
+      case "sleepNow": {
+        ctx.clientWs?.send(JSON.stringify({ type: "force_sleep" }));
+        return { result: "Going to sleep. Say 'Hey Bella' when you need me." };
       }
 
       case "moveHud": {

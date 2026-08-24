@@ -23,12 +23,21 @@ const loadCfg = () => readJson<UpdateConfig>(CONFIG_FILE, {});
 const saveCfg = (patch: Partial<UpdateConfig>) => writeJson(CONFIG_FILE, { ...loadCfg(), ...patch });
 
 function currentVersion(): string {
-  try {
-    const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), "package.json"), "utf-8"));
-    return pkg.version || "0.0.0";
-  } catch {
-    return "0.0.0";
+  // Works in dev (cwd = repo root) and in the esbuild bundle (__dirname = dist),
+  // plus packaged installs where package.json ships next to the bundle.
+  const candidates = [
+    path.join(process.cwd(), "package.json"),
+    path.join(__dirname, "..", "package.json"),
+    path.join(__dirname, "package.json"),
+  ];
+  for (const p of candidates) {
+    try {
+      const pkg = JSON.parse(fs.readFileSync(p, "utf-8"));
+      if (pkg?.version && pkg.name === "BELLA") return String(pkg.version);
+      if (pkg?.version) return String(pkg.version);
+    } catch { /* try next */ }
   }
+  return "0.0.0";
 }
 
 function normalizeVer(v: string): number[] {
@@ -60,7 +69,9 @@ async function latestRelease(): Promise<ReleaseInfo> {
   const rel = await fetchJson<{
     tag_name?: string; name?: string; body?: string; published_at?: string; html_url?: string;
     assets: { name: string; browser_download_url: string }[];
-  }>(`https://api.github.com/repos/${cfg.repo}/releases/latest`, 20000);
+  }>(`https://api.github.com/repos/${cfg.repo}/releases/latest`, 20000, {
+    headers: { "User-Agent": "BELLA-Updater", Accept: "application/vnd.github+json" },
+  });
   const installer = (rel.assets || []).find(a => /\.(exe|msi)$/i.test(a.name));
   return {
     tagName: rel.tag_name || "",

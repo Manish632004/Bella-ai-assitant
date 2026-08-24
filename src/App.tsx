@@ -333,6 +333,7 @@ export default function App() {
   const recorderRef = useRef<MediaRecorder | null>(null);
   const recorderChunksRef = useRef<Blob[]>([]);
   const recorderStreamRef = useRef<MediaStream | null>(null);
+  const enrollCaptionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isRecordingScreen, setIsRecordingScreen] = useState(false);
 
   const startScreenRecording = async () => {
@@ -436,17 +437,19 @@ export default function App() {
       for (let i = 0; i < arr.length; i++) binary += String.fromCharCode(arr[i]);
       return btoa(binary);
     };
+    setModelCaption("🎙️ Voice enrollment — say “Hey Bella”… (1/3)");
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const samples: string[] = [];
       const ctx = new AudioContext();
       for (let i = 0; i < 3; i++) {
+        setModelCaption(`🎙️ Say “Hey Bella” clearly… (${i + 1}/3)`);
         const recorder = new MediaRecorder(stream);
         const chunks: Blob[] = [];
         recorder.ondataavailable = e => chunks.push(e.data);
         const done = new Promise<void>(resolve => { recorder.onstop = () => resolve(); });
         recorder.start();
-        await new Promise(r => setTimeout(r, 1800)); // ~1.8s of speech per sample
+        await new Promise(r => setTimeout(r, 2000)); // ~2s of speech per sample
         recorder.stop();
         await done;
         const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
@@ -457,16 +460,28 @@ export default function App() {
       }
       stream.getTracks().forEach(t => { try { t.stop(); } catch {} });
       ctx.close();
+      setModelCaption("🔒 Learning your voiceprint…");
       const res = await fetch("/api/guardian/enroll", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ samples }),
       });
       const json = await res.json();
-      console.log("[Guardian] Enrollment result:", json);
+      if (json?.enrolled >= 2) {
+        setModelCaption("✅ Voiceprint enrolled! You can now arm Voice Guardian.");
+      } else {
+        setModelCaption(`⚠️ Enrollment failed: ${json?.error || "try again closer to the mic"}`);
+        setErrorText(`Voice enrollment failed: ${json?.error || "samples too quiet/short"}`);
+      }
     } catch (err: any) {
       console.error("[Guardian] enrollment failed:", err);
+      setModelCaption("⚠️ Mic access failed — check Windows mic permission");
       setErrorText(`Voice enrollment failed: ${err.message || err}`);
+    } finally {
+      // Cancel any pending clear from a previous run so overlapping
+      // enrollments can't erase each other's captions.
+      if (enrollCaptionTimerRef.current) clearTimeout(enrollCaptionTimerRef.current);
+      enrollCaptionTimerRef.current = setTimeout(() => setModelCaption(""), 6000);
     }
   }, []);
 
@@ -563,6 +578,23 @@ export default function App() {
       case "recorder_pause": pauseScreenRecording(); break;
       case "recorder_resume": resumeScreenRecording(); break;
       case "guardian_enroll": void runGuardianEnrollment(); break;
+      case "key_failover":
+        setErrorText(`⚠️ Gemini key issue — switched to backup key ${event.toKey ?? ""} automatically.`);
+        setTimeout(() => setErrorText(""), 6000);
+        break;
+      case "macro_recording":
+        setMacroRecordingActive(!!event.active);
+        break;
+      case "force_sleep":
+        console.log("[Bella 6.0] sleepNow tool triggered — entering standby.");
+        setSleepReason("auto");
+        // Grace period so Bella can finish speaking her goodbye first.
+        setTimeout(() => {
+          if (sessionRef.current && sessionRef.current.getState() !== "disconnected") {
+            sessionRef.current.disconnect();
+          }
+        }, 2500);
+        break;
       case "hud_move":
         if ((window as any).bella?.positionHudCorner) {
           const where = String(event.where || "");
@@ -685,19 +717,29 @@ export default function App() {
       setShowCameraVision(false);
     }
 
-    // BELLA 6.0 — "so jao": hands-free sleep; wake word re-activates her
-    if (
-      /\bso jao\b/.test(lower) ||
-      lower.includes("go to sleep") ||
-      lower.includes("sleep now bella") ||
-      lower.includes("bella sleep") ||
-      lower.includes("goodnight bella") ||
-      lower.includes("good night bella")
-    ) {
-      console.log("[Bella 6.0] Sleep command received ('so jao').");
-      setSleepReason("auto"); // auto standby keeps the offline wake word armed
-      if (sessionRef.current && sessionRef.current.getState() !== "disconnected") {
-        sessionRef.current.disconnect();
+    // BELLA 6.0 — "so jao": hands-free sleep; wake word re-activates her.
+    // Imperative-only matching: negations ("I don't want to go to sleep") or
+    // mentions inside longer sentences must NOT put her to bed.
+    {
+      const t = lower.trim().replace(/[.!?,]+$/g, "");
+      const words = t.split(/\s+/).filter(Boolean);
+      const mentionsBella = /\bbella\b/.test(t);
+      const negated = /\b(don'?t|do\s*not|not|never|nahi|nahin|nope|stop)\b/.test(t);
+      const phraseHit =
+        /\b(go\s*to\s*sleep|sleep\s*now|go\s*to\s*bed|good\s*night|goodnight|so+\s*ja+a?o?|abhi\s*so+\s*ja+o?)\b/.test(t) ||
+        /^bella[,!.]?\s+(go\s+to\s+)?(sleep|bed)$/.test(t);
+      const wantsSleep = !negated && phraseHit && (
+        (mentionsBella && words.length <= 8) ||
+        (!mentionsBella && words.length <= 4)
+      );
+      if (wantsSleep) {
+        console.log("[Bella 6.0] Sleep command received ('so jao').");
+        setSleepReason("auto"); // auto standby keeps the offline wake word armed
+        setTimeout(() => {
+          if (sessionRef.current && sessionRef.current.getState() !== "disconnected") {
+            sessionRef.current.disconnect();
+          }
+        }, 2500);
       }
     }
 
@@ -724,6 +766,7 @@ export default function App() {
     return "idle";
   };
   const [modelCaption, setModelCaption] = useState<string>("");
+  const [macroRecordingActive, setMacroRecordingActive] = useState<boolean>(false);
   const [activeProjectorUrl, setActiveProjectorUrl] = useState<string | null>(null);
   const [showGuide, setShowGuide] = useState<boolean>(false);
   const [errorText, setErrorText] = useState<string | null>(null);
@@ -1105,9 +1148,11 @@ export default function App() {
           "browserScroll",
           "browserType",
           "browserGoBack",
-          "browserTabAction",
-          "openWebsite"
+          "browserTabAction"
         ];
+        // NOTE: "openWebsite" deliberately NOT here — the server routes it to
+        // the user's REAL default browser; hijacking it into the in-app
+        // projector contradicts the documented behaviour.
 
         if (browserTools.includes(name)) {
           // Bring up the Holographic Browser Controller if it is not active
@@ -1707,6 +1752,31 @@ export default function App() {
           </AnimatePresence>
 
         </main>
+      )}
+
+      {/* LIVE CAPTION OVERLAY — voice transcript + system captions */}
+      {(userCaption || modelCaption || macroRecordingActive) && (
+        <div className="fixed left-1/2 -translate-x-1/2 bottom-28 z-50 w-full max-w-xl px-6 pointer-events-none flex flex-col items-center gap-2">
+          {macroRecordingActive && (
+            <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-rose-950/70 border border-rose-500/40 backdrop-blur-md">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500" />
+              </span>
+              <span className="text-[10px] font-bold tracking-widest text-rose-200 uppercase font-mono">Recording macro</span>
+            </div>
+          )}
+          {modelCaption && (
+            <div className="px-4 py-2 rounded-2xl bg-black/55 border border-white/[0.08] backdrop-blur-md">
+              <p className="text-sm text-white/95 text-center leading-relaxed">{modelCaption}</p>
+            </div>
+          )}
+          {userCaption && (
+            <div className="px-4 py-2 rounded-2xl bg-cyan-950/45 border border-cyan-400/[0.15] backdrop-blur-md">
+              <p className="text-sm text-cyan-100/90 text-center leading-relaxed">“{userCaption}”</p>
+            </div>
+          )}
+        </div>
       )}
 
       {/* FOOTER INTERFACE WITH WAVEFORM AND CONTROLS (Full stage only) */}

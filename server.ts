@@ -124,6 +124,7 @@ const logError = (m: string) => appendLog("errors.log", m);
 // BELLA Desktop Control Agent â€” HTTP bridge to the Python FastAPI backend.
 // ---------------------------------------------------------------------------
 const DESKTOP_AGENT_URL = process.env.DESKTOP_AGENT_URL || "http://127.0.0.1:8765";
+const agentPort = new URL(DESKTOP_AGENT_URL).port || "8765";
 const DESKTOP_AGENT_TIMEOUT = 25_000; // ms
 
 /**
@@ -178,6 +179,10 @@ const DESKTOP_TOOLS: ReadonlySet<string> = new Set([
  * If false, callDesktopAgent will probe /health and attempt an auto-spawn.
  */
 let desktopAgentVerified = false;
+// BELLA 6.0 — the stale-agent upgrade is destructive (kills whatever listens on
+// the agent port). Run it at most ONCE per server process so a persistent
+// mismatch can't cause a kill/respawn churn on every tool call.
+let agentUpgradeAttempted = false;
 
 /**
  * Auto-spawn the Python desktop agent as a detached child process if it is not
@@ -189,8 +194,37 @@ function spawnDesktopAgent(): void {
   const agentEnv = {
     ...process.env,
     BELLA_AGENT_HOST: "127.0.0.1",
-    BELLA_AGENT_PORT: "8765",
+    BELLA_AGENT_PORT: agentPort,
   };
+
+  // Development preference: run the SOURCE agent (it tracks this repo's tool
+  // set) whenever the sources are present. The frozen exe shipped with older
+  // installs lacks newer tools (keyboard/mouse/tabs/media), so in dev we only
+  // use it as a last resort.
+  const devMain = path.join(process.cwd(), "desktop_agent", "main.py");
+  if (fs.existsSync(devMain)) {
+    const candidates = [
+      process.env.BELLA_PYTHON,
+      "python",
+      "python3",
+    ].filter(Boolean) as string[];
+    for (const py of candidates) {
+      try {
+        require("child_process").execSync(`"${py}" -c "import uvicorn"`, { stdio: "ignore" });
+        const child = spawn(py, ["-m", "uvicorn", "desktop_agent.main:app", "--host", "127.0.0.1", "--port", agentPort], {
+          cwd: process.cwd(), // repo root so `desktop_agent` is importable as a package
+          detached: true,
+          stdio: "ignore",
+          windowsHide: true,
+          env: agentEnv,
+        });
+        child.unref();
+        logStartup(`AGENT_SPAWN dev-source pid=${child.pid} python=${py}`);
+        console.log(`[Desktop Agent] Launched development agent from source (PID ${child.pid}).`);
+        return;
+      } catch { /* try next candidate */ }
+    }
+  }
 
   // Preferred path (packaged app): a PyInstaller-frozen agent exe that embeds
   // its own Python runtime. Set by the Electron main process via BELLA_AGENT_EXE.
@@ -223,7 +257,7 @@ function spawnDesktopAgent(): void {
   ].filter(Boolean) as string[];
   const py = candidates.find((p) => {
     try {
-      require("child_process").execSync(`"${p}" --version`, { stdio: "ignore" });
+      require("child_process").execSync(`"${p}" -c "import uvicorn"`, { stdio: "ignore" });
       return true;
     } catch {
       return false;
@@ -237,7 +271,7 @@ function spawnDesktopAgent(): void {
   try {
     const child = spawn(
       py,
-      ["-m", "uvicorn", "desktop_agent.main:app", "--host", "127.0.0.1", "--port", "8765"],
+      ["-m", "uvicorn", "desktop_agent.main:app", "--host", "127.0.0.1", "--port", agentPort],
       { cwd: process.cwd(), detached: true, stdio: "ignore", windowsHide: true, env: agentEnv }
     );
     child.unref();
@@ -271,8 +305,41 @@ async function isDesktopAgentAlive(): Promise<boolean> {
 async function ensureDesktopAgent(): Promise<void> {
   if (desktopAgentVerified) return;
   if (await isDesktopAgentAlive()) {
+    // BELLA 6.0 — stale-agent upgrade: in development, if the running agent
+    // exposes fewer tools than this build declares, replace it with the
+    // source-based agent so keyboard/mouse/tabs/media tools actually exist.
+    const devMain = path.join(process.cwd(), "desktop_agent", "main.py");
+    try {
+      const res = await fetch(`${DESKTOP_AGENT_URL}/tools`, { signal: AbortSignal.timeout(4000) });
+      const data: any = await res.json();
+      const count = Number(data?.tool_count || 0);
+      if (!agentUpgradeAttempted && fs.existsSync(devMain) && count > 0 && count < 100) {
+        agentUpgradeAttempted = true;
+        console.log(`[Desktop Agent] Stale build detected (${count} tools) — upgrading to source agent…`);
+        // Kill whatever currently owns the agent port — that covers both the
+        // frozen bella-agent.exe and a stray uvicorn/python from an older run.
+        await new Promise<void>((resolve) => exec(
+          `powershell -NoProfile -NonInteractive -Command "$c = Get-NetTCPConnection -LocalPort ${agentPort} -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1; if ($c) { Stop-Process -Id $c.OwningProcess -Force -ErrorAction SilentlyContinue }"`,
+          () => resolve(),
+        ));
+        await new Promise((r) => setTimeout(r, 800));
+        desktopAgentVerified = false;
+        spawnDesktopAgent();
+        for (let i = 1; i <= 25; i++) {
+          await new Promise((r) => setTimeout(r, 1000));
+          const retry = await fetch(`${DESKTOP_AGENT_URL}/tools`, { signal: AbortSignal.timeout(3000) })
+            .then(x => x.json()).catch(() => null);
+          if (retry && Number(retry.tool_count || 0) >= 100 && Number(retry.tool_count || 0) > count) {
+            desktopAgentVerified = true;
+            console.log(`[Desktop Agent] Upgraded — ${retry.tool_count} tools available.`);
+            return;
+          }
+        }
+        console.warn("[Desktop Agent] Upgrade incomplete; continuing with available agent.");
+      }
+    } catch { /* tools endpoint unavailable — keep current agent */ }
     desktopAgentVerified = true;
-    console.log("[Desktop Agent] Already running â€” 52 tools available.");
+    console.log("[Desktop Agent] Already running.");
     return;
   }
   console.log("[Desktop Agent] Not detected. Auto-starting...");
@@ -281,7 +348,7 @@ async function ensureDesktopAgent(): Promise<void> {
     await new Promise((r) => setTimeout(r, 1000));
     if (await isDesktopAgentAlive()) {
       desktopAgentVerified = true;
-      console.log(`[Desktop Agent] Online after ${i}s â€” 52 tools available.`);
+      console.log(`[Desktop Agent] Online after ${i}s.`);
       return;
     }
   }
@@ -291,8 +358,16 @@ async function ensureDesktopAgent(): Promise<void> {
 function resolveSafePath(filePath: string): string {
   const home = os.homedir();
   if (!filePath || filePath.trim() === "") return path.join(home, "Desktop", "document.txt");
-  
+
   let p = filePath.trim();
+  // Bare known-folder names ("downloads", "Desktop", "documents"…) map to home.
+  const KNOWN_FOLDERS: Record<string, string> = {
+    desktop: "Desktop", documents: "Documents", docs: "Documents",
+    downloads: "Downloads", pictures: "Pictures", music: "Music", videos: "Videos",
+  };
+  const bare = p.replace(/[\\/]+$/, "").toLowerCase();
+  if (KNOWN_FOLDERS[bare]) return path.join(home, KNOWN_FOLDERS[bare]);
+
   if (p.toLowerCase().startsWith("desktop/") || p.toLowerCase().startsWith("desktop\\")) {
     p = path.join(home, "Desktop", p.substring(8));
   } else if (p.toLowerCase().startsWith("documents/") || p.toLowerCase().startsWith("documents\\")) {
@@ -301,6 +376,10 @@ function resolveSafePath(filePath: string): string {
     p = path.join(home, "Downloads", p.substring(10));
   } else if (p.startsWith("~")) {
     p = path.join(home, p.substring(1));
+  } else if (/^[a-zA-Z]:[^\\/]/.test(p)) {
+    // Drive-relative form ("C:notes.txt") would produce an invalid Windows path
+    // when joined — treat it as a plain filename on the Desktop.
+    p = path.join(home, "Desktop", p.substring(2));
   } else if (!path.isAbsolute(p)) {
     p = path.join(home, "Desktop", p);
   }
@@ -397,6 +476,37 @@ function openUrlInDefaultBrowser(url: string): void {
   }
 }
 
+/** Locate an installed desktop app's executable (App Paths registry + PATH). */
+function findInstalledExe(appRaw: string): string | null {
+  const aliases: Record<string, string> = {
+    vscode: "code", "vs code": "code", "visual studio code": "code",
+    "google chrome": "chrome", edge: "msedge", "microsoft edge": "msedge",
+    "brave browser": "brave",
+  };
+  const name = (aliases[appRaw] || appRaw).replace(/\s+/g, "").toLowerCase();
+  const exeName = `${name}.exe`;
+  const hives = [
+    "HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths",
+    "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths",
+  ];
+  for (const hive of hives) {
+    try {
+      const out = require("child_process").execSync(`reg query "${hive}\\${exeName}" /ve`, {
+        encoding: "utf-8", stdio: ["pipe", "pipe", "ignore"],
+      });
+      const m = String(out).match(/(?:REG_SZ|REG_EXPAND_SZ)\s+(.+)\s*$/i);
+      const p = m?.[1]?.trim();
+      if (p && fs.existsSync(p)) return p;
+    } catch { /* not registered */ }
+  }
+  try {
+    const out = require("child_process").execSync(`where ${exeName}`, { encoding: "utf-8", stdio: ["pipe", "pipe", "ignore"] });
+    const first = String(out).trim().split(/\r?\n/)[0];
+    if (first && fs.existsSync(first)) return first;
+  } catch {}
+  return null;
+}
+
 function launchAppNative(appName: string): Promise<{ ok: boolean; result?: unknown; error?: string }> {
   return new Promise((resolve) => {
     const raw = appName.trim().toLowerCase();
@@ -405,20 +515,22 @@ function launchAppNative(appName: string): Promise<{ ok: boolean; result?: unkno
     // If appName is an existing local file or absolute path, open it directly with default Windows program
     if (fs.existsSync(appName) || /^[a-zA-Z]:[/\\]/.test(appName) || /\.(png|jpg|jpeg|pdf|txt|docx|xlsx|csv|mp3|mp4|wav)$/i.test(appName)) {
       console.log(`[Native OS] Opening file/path with default shell: ${appName}`);
-      exec(`powershell -NoProfile -NonInteractive -Command "Start-Process '${appName.replace(/'/g, "''")}'"`, (err) => {
-        if (!err) {
-          return resolve({ ok: true, result: { status: "opened", file: appName } });
-        }
+      const esc = appName.replace(/'/g, "''");
+      exec(`powershell -NoProfile -NonInteractive -Command "Start-Process '${esc}'"`, (err) => {
+        if (!err) return resolve({ ok: true, result: { status: "opened", file: appName } });
+        // PowerShell failed — never leave the promise pending.
+        exec(`start "" "${appName.replace(/"/g, "")}"`, () => {});
+        return resolve({ ok: true, result: { status: "opened", file: appName, method: "cmd_start" } });
       });
       return;
     }
 
-    // If it's a known web app/site and not a native-only tool, launch directly in browser
-    if (KNOWN_WEB_SITES[raw]) {
-      const webUrl = KNOWN_WEB_SITES[raw];
-      console.log(`[Native OS] Routing web app '${appName}' to default browser: ${webUrl}`);
-      openUrlInDefaultBrowser(webUrl);
-      return resolve({ ok: true, result: { status: "launched", app: appName, method: "web", url: webUrl } });
+    // BELLA 6.0 — prefer the INSTALLED desktop app over its website twin.
+    const installedExe = findInstalledExe(raw);
+    if (installedExe) {
+      console.log(`[Native OS] Found installed app executable: ${installedExe}`);
+      exec(`start "" "${installedExe}"`);
+      return resolve({ ok: true, result: { status: "opened", app: appName, exe: installedExe } });
     }
 
     const uriSchemes: Record<string, string> = {
@@ -433,19 +545,46 @@ function launchAppNative(appName: string): Promise<{ ok: boolean; result?: unkno
       whatsapp: "whatsapp:",
       telegram: "tg://",
       obsidian: "obsidian://",
-      edge: "microsoft-edge:http://",
-      "microsoft edge": "microsoft-edge:http://",
-      msedge: "microsoft-edge:http://",
       store: "ms-windows-store:",
       "microsoft store": "ms-windows-store:",
     };
 
+    // Apps whose desktop client usually registers a URI handler — try the real
+    // app BEFORE routing to the website twin, and fall back to the web if the
+    // protocol isn't registered.
     if (uriSchemes[raw]) {
-      exec(`powershell -NoProfile -NonInteractive -Command "Start-Process '${uriSchemes[raw]}' -ErrorAction SilentlyContinue"`, (err) => {
+      exec(`powershell -NoProfile -NonInteractive -Command "try { Start-Process '${uriSchemes[raw]}' -ErrorAction Stop; exit 0 } catch { exit 1 }"`, (err) => {
         if (!err) {
           console.log(`[Native OS] Launched ${appName} via URI scheme: ${uriSchemes[raw]}`);
           return resolve({ ok: true, result: { status: "launched", app: appName, method: "uri" } });
         }
+        if (KNOWN_WEB_SITES[raw]) {
+          const webUrl = KNOWN_WEB_SITES[raw];
+          openUrlInDefaultBrowser(webUrl);
+          return resolve({ ok: true, result: { status: "launched", app: appName, method: "web", url: webUrl } });
+        }
+        return resolve({ ok: false, error: `Couldn't launch ${appName}.` });
+      });
+      return;
+    }
+
+    // If it's a known web app/site and not a native-only tool, launch directly in browser
+    if (KNOWN_WEB_SITES[raw]) {
+      const webUrl = KNOWN_WEB_SITES[raw];
+      console.log(`[Native OS] Routing web app '${appName}' to default browser: ${webUrl}`);
+      openUrlInDefaultBrowser(webUrl);
+      return resolve({ ok: true, result: { status: "launched", app: appName, method: "web", url: webUrl } });
+    }
+
+    const msEdgeAliases: Record<string, string> = {
+      edge: "microsoft-edge:http://", "microsoft edge": "microsoft-edge:http://", msedge: "microsoft-edge:http://",
+    };
+
+    if (msEdgeAliases[raw]) {
+      exec(`powershell -NoProfile -NonInteractive -Command "try { Start-Process '${msEdgeAliases[raw]}' -ErrorAction Stop; exit 0 } catch { exit 1 }"`, (err) => {
+        if (!err) return resolve({ ok: true, result: { status: "launched", app: appName, method: "uri" } });
+        openUrlInDefaultBrowser("http://");
+        return resolve({ ok: true, result: { status: "launched", app: appName, method: "web", url: "http://" } });
       });
       return;
     }
@@ -605,7 +744,11 @@ function closeAppNative(appName: string): Promise<{ ok: boolean; result?: unknow
     const psScript = `
 $q = '${safeName}';
 if ($q.Length -gt 1) {
-  Get-Process | Where-Object { $_.ProcessName -like "*$q*" -or $_.MainWindowTitle -like "*$q*" } | Stop-Process -Force -ErrorAction SilentlyContinue;
+  if ($q.Length -ge 4) {
+    Get-Process | Where-Object { $_.ProcessName -like "*$q*" -or ($_.MainWindowTitle -and $_.MainWindowTitle -like "*$q*") } | Stop-Process -Force -ErrorAction SilentlyContinue;
+  } else {
+    Get-Process | Where-Object { $_.ProcessName -like "*$q*" } | Stop-Process -Force -ErrorAction SilentlyContinue;
+  }
 }
 `;
     exec(`powershell -NoProfile -NonInteractive -Command "${psScript.replace(/\n/g, " ")}"`, () => {
@@ -617,11 +760,13 @@ if ($q.Length -gt 1) {
 function typeTextNative(text: string): Promise<{ ok: boolean; result?: unknown }> {
   return new Promise((resolve) => {
     console.log(`[Native OS] Typing text into active window (${text.length} chars)`);
+    // Base64 keeps arbitrary user text (quotes, here-string terminators, newlines)
+    // from being interpreted by PowerShell.
+    const b64text = Buffer.from(text, "utf8").toString("base64");
     const psScript = `
 Add-Type -AssemblyName System.Windows.Forms;
-Set-Clipboard -Value @'
-${text.replace(/'/g, "''")}
-'@;
+$t = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${b64text}'));
+Set-Clipboard -Value $t;
 Start-Sleep -Milliseconds 150;
 [System.Windows.Forms.SendKeys]::SendWait('^v');
 `;
@@ -734,6 +879,13 @@ async function executeNativeFallback(
     // ── Typing text into active application ──
     if (tool === "typeText" || tool === "pasteClipboard") {
       const text = (args.text || args.content || "") as string;
+      if (tool === "pasteClipboard" && !text) {
+        // No explicit text → paste whatever is ALREADY on the clipboard
+        // (never wipe the user's clipboard with an empty overwrite).
+        exec(`powershell -NoProfile -NonInteractive -Command "Add-Type -AssemblyName System.Windows.Forms; Start-Sleep -Milliseconds 120; [System.Windows.Forms.SendKeys]::SendWait('^v')"`);
+        return { ok: true, result: { status: "pasted", source: "clipboard" } };
+      }
+      if (!text) return { ok: false, error: "No text provided to type." };
       return await typeTextNative(text);
     }
 
@@ -804,7 +956,7 @@ async function executeNativeFallback(
       const q = (args.query || "") as string;
       (async () => {
         try {
-          const searchRes = await fetch(`http://localhost:3000/api/youtube-search?q=${encodeURIComponent(q)}`);
+          const searchRes = await fetch(`http://127.0.0.1:${process.env.PORT || 3000}/api/youtube-search?q=${encodeURIComponent(q)}`);
           if (searchRes.ok) {
             const data = await searchRes.json();
             const firstId = data.results?.[0]?.videoId;
@@ -875,6 +1027,108 @@ async function executeNativeFallback(
       return { ok: true, result: { status: "success", volume: pct, result: `Volume set to ${pct}%.` } };
     }
 
+    // ── Keyboard / tabs / media-key fallbacks (WScript SendKeys + VK codes) ──
+    // These keep core control working even when the desktop agent is the old
+    // frozen build without keyboard tools.
+    const sendKeysPs = (keys: string) =>
+      exec(`powershell -NoProfile -NonInteractive -Command "(New-Object -ComObject WScript.Shell).SendKeys('${keys.replace(/'/g, "''")}')"`, (err) => {
+        if (err) console.warn(`[Native OS] SendKeys failed for '${keys}':`, err.message);
+      });
+    const vkKeyPs = (vk: number) =>
+      exec(`powershell -NoProfile -NonInteractive -Command "Add-Type -MemberDefinition '[DllImport(\\\"user32.dll\\\")] public static extern void keybd_event(byte b,byte s,uint f,int e);' -Name K -Namespace W; [W.K]::keybd_event(${vk},0,0,0); Start-Sleep -Milliseconds 60; [W.K]::keybd_event(${vk},0,2,0)"`, (err) => {
+        if (err) console.warn(`[Native OS] keybd_event failed for VK ${vk}:`, err.message);
+      });
+
+    if (tool === "pressEnter") {
+      sendKeysPs("{ENTER}");
+      return { ok: true, result: { status: "success", result: "Pressed Enter." } };
+    }
+    if (tool === "pressKey") {
+      const map: Record<string, string> = {
+        enter: "{ENTER}", escape: "{ESC}", esc: "{ESC}", tab: "{TAB}", space: " ", spacebar: " ",
+        backspace: "{BACKSPACE}", delete: "{DELETE}", del: "{DELETE}",
+        up: "{UP}", down: "{DOWN}", left: "{LEFT}", right: "{RIGHT}",
+        arrowup: "{UP}", arrowdown: "{DOWN}", arrowleft: "{LEFT}", arrowright: "{RIGHT}",
+        home: "{HOME}", end: "{END}",
+        pageup: "{PGUP}", pagedown: "{PGDN}", pgup: "{PGUP}", pgdn: "{PGDN}",
+        insert: "{INS}", printscreen: "{PRTSC}",
+        capslock: "{CAPSLOCK}", numlock: "{NUMLOCK}", scrolllock: "{SCROLLLOCK}",
+        f1: "{F1}", f2: "{F2}", f3: "{F3}", f4: "{F4}", f5: "{F5}", f6: "{F6}",
+        f7: "{F7}", f8: "{F8}", f9: "{F9}", f10: "{F10}", f11: "{F11}", f12: "{F12}",
+      };
+      const k = String(args.key || args.name || "").toLowerCase().trim();
+      const seq = map[k] ?? (k.length === 1 ? k.toUpperCase() : "");
+      if (!seq) {
+        return { ok: false, error: `Unsupported key: ${args.key}` };
+      }
+      sendKeysPs(seq);
+      return { ok: true, result: { status: "success", result: `Pressed ${k}.` } };
+    }
+    if (tool === "keyboardHotkey" || tool === "keyboardShortcut") {
+      // keys like "ctrl+v", "ctrl shift tab", "win+d"
+      const raw = String(args.keys || args.hotkey || "").toLowerCase();
+      let seq = raw.split(/[\s+]+/).filter(Boolean).map(k => {
+        switch (k) {
+          case "ctrl": case "control": return "^";
+          case "shift": return "+";
+          case "alt": return "%";
+          case "win": case "windows": return "#";
+          case "enter": return "{ENTER}";
+          case "escape": case "esc": return "{ESC}";
+          case "tab": return "{TAB}";
+          case "pageup": case "pgup": return "{PGUP}";
+          case "pagedown": case "pgdn": return "{PGDN}";
+          default:
+            return k.length === 1 ? k.toUpperCase() : `{${k.toUpperCase()}}`;
+        }
+      }).join("");
+      if (!seq) {
+        return { ok: false, error: `Unrecognized hotkey: ${raw}` };
+      }
+      sendKeysPs(seq);
+      return { ok: true, result: { status: "success", result: `Sent ${raw}.` } };
+    }
+    if (tool === "newTab") { sendKeysPs("^t"); return { ok: true, result: { status: "success", result: "New tab opened." } }; }
+    if (tool === "closeTab") { sendKeysPs("^w"); return { ok: true, result: { status: "success", result: "Tab closed." } }; }
+    if (tool === "nextTab") { sendKeysPs("^{TAB}"); return { ok: true, result: { status: "success", result: "Switched to next tab." } }; }
+    if (tool === "previousTab") { sendKeysPs("^+{TAB}"); return { ok: true, result: { status: "success", result: "Switched to previous tab." } }; }
+    if (tool === "browserBack") { sendKeysPs("%{LEFT}"); return { ok: true, result: { status: "success", result: "Navigated back." } }; }
+    if (tool === "browserForward") { sendKeysPs("%{RIGHT}"); return { ok: true, result: { status: "success", result: "Navigated forward." } }; }
+    if (tool === "mediaNextTrack" || tool === "nextSong" || tool === "skipSong") { vkKeyPs(0xB6); return { ok: true, result: { status: "success", result: "Next track." } }; }
+    if (tool === "mediaPrevTrack" || tool === "previousSong") { vkKeyPs(0xB5); return { ok: true, result: { status: "success", result: "Previous track." } }; }
+    if (tool === "mediaPlayPause" || tool === "playPauseMedia" || tool === "playSong" || tool === "pauseSong" || tool === "resumeSong") { vkKeyPs(0xB3); return { ok: true, result: { status: "success", result: "Play/pause toggled." } }; }
+    if (tool === "mediaStop") { vkKeyPs(0xB4); return { ok: true, result: { status: "success", result: "Playback stopped." } }; }
+
+    // ── Mouse fallbacks (user32 mouse_event / SetCursorPos) ──
+    if (["leftClick", "rightClick", "doubleClick", "mouseDoubleClick", "mouseRightClick", "mouseScroll", "mouseMove"].includes(tool)) {
+      const mousePs = `
+Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;public class M{[DllImport("user32.dll")]public static extern void mouse_event(uint f,uint x,uint y,uint d,int e);[DllImport("user32.dll")]public static extern bool SetCursorPos(int x,int y);}';
+`;
+      const click = (fDown: number, fUp: number) => `[M]::mouse_event(${fDown},0,0,0,0); Start-Sleep -Milliseconds 40; [M]::mouse_event(${fUp},0,0,0,0);`;
+      const hasXY = args.x !== undefined && args.y !== undefined && Number.isFinite(Number(args.x)) && Number.isFinite(Number(args.y));
+      const moveTo = hasXY ? `[M]::SetCursorPos(${Math.round(Number(args.x))},${Math.round(Number(args.y))}); Start-Sleep -Milliseconds 60;` : "";
+      let body = "";
+      if (tool === "leftClick") body = `${moveTo} ${click(2, 4)}`;
+      else if (tool === "doubleClick" || tool === "mouseDoubleClick") body = `${moveTo} ${click(2, 4)} Start-Sleep -Milliseconds 60; ${click(2, 4)}`;
+      else if (tool === "rightClick" || tool === "mouseRightClick") body = `${moveTo} ${click(8, 16)}`;
+      else if (tool === "mouseScroll") {
+        // Accept either wheel notches ("3") or pixel-ish units ("300") from the model.
+        let amount = Number(args.amount || 3);
+        if (!Number.isFinite(amount) || amount <= 0) amount = 3;
+        if (amount > 30) amount = amount / 120;
+        const clicks = Math.max(1, Math.min(15, Math.round(amount)));
+        const dir = String(args.direction || "down").toLowerCase() === "up" ? 1 : -1;
+        body = `for($i=0;$i -lt ${clicks};$i++){ [M]::mouse_event(0x800,0,0,${dir * 120},0); Start-Sleep -Milliseconds 50 }`;
+      } else if (tool === "mouseMove") {
+        body = `[M]::SetCursorPos(${Number(args.x ?? 640)},${Number(args.y ?? 360)});`;
+      }
+      await new Promise<void>((resolve) => exec(
+        `powershell -NoProfile -NonInteractive -EncodedCommand ${Buffer.from(mousePs + body, "utf16le").toString("base64")}`,
+        (err) => resolve(),
+      ));
+      return { ok: true, result: { status: "success", result: `${tool} done.` } };
+    }
+
     // ── Screenshot fallback ──
     if (tool === "saveScreenshot" || tool === "takeScreenshot") {
       const rawName = ((args.name || args.filename || "") as string).trim().replace(/\.png$/i, "").replace(/[<>:"/\\|?*]/g, "_");
@@ -898,6 +1152,9 @@ $bmp.Dispose()
       await new Promise<void>((resolve) => {
         exec(`powershell -NoProfile -NonInteractive -EncodedCommand ${b64}`, () => resolve());
       });
+      if (!fs.existsSync(outPath)) {
+        return { ok: false, error: "Screenshot capture failed — file was not created." };
+      }
       return { ok: true, result: { status: "saved", filename, path: outPath, result: `Screenshot '${filename}' saved to Downloads folder (${outPath}).` } };
     }
   } catch (e: any) {
@@ -912,7 +1169,14 @@ const DIRECT_NATIVE_TOOLS = new Set([
   "createFile", "writeCodeFile", "createPythonFile", "readFile", "deleteFile",
   "copyFile", "moveFile", "renameFile", "searchFiles", "listFiles",
   "typeText", "pasteClipboard", "getFileProperties", "fileProperties",
-  "searchYouTube", "openWebsite", "openUrl", "searchGoogle", "searchWeb", "searchGitHub", "openFolder"
+  "searchYouTube", "openWebsite", "openUrl", "searchGoogle", "searchWeb", "searchGitHub", "openFolder",
+  // BELLA 6.0 — native keyboard/mouse/tabs/media fallbacks (old-agent-proof)
+  "pressEnter", "pressKey", "keyboardHotkey", "keyboardShortcut",
+  "newTab", "closeTab", "nextTab", "previousTab", "browserBack", "browserForward",
+  "leftClick", "rightClick", "doubleClick", "mouseDoubleClick", "mouseRightClick",
+  "mouseScroll", "mouseMove",
+  "mediaNextTrack", "mediaPrevTrack", "mediaPlayPause", "mediaStop",
+  "nextSong", "previousSong", "skipSong", "playPauseMedia", "playSong", "pauseSong", "resumeSong",
 ]);
 
 const recentToolCalls = new Map<string, { time: number; result: { ok: boolean; result?: unknown; error?: string } }>();
@@ -921,13 +1185,24 @@ async function callDesktopAgent(
   tool: string,
   args: Record<string, unknown>,
 ): Promise<{ ok: boolean; result?: unknown; error?: string }> {
-  // Prevent duplicate execution if the exact same tool call was triggered within 1500ms
+  // Prevent duplicate execution if the exact same tool call was triggered within 1500ms.
+  // Stateful tools (volume/media/scroll/clicks) are exempt — repeating them is the point.
+  const STATEFUL = new Set([
+    "volumeUp", "volumeDown", "setVolume", "muteVolume", "unmuteVolume", "toggleMute",
+    "mediaNextTrack", "mediaPrevTrack", "nextSong", "previousSong", "skipSong",
+    "mediaPlayPause", "playPauseMedia", "playSong", "pauseSong", "resumeSong", "mediaStop",
+    "mouseScroll", "leftClick", "rightClick", "doubleClick",
+    "pressEnter", "pressKey", "keyboardHotkey", "keyboardShortcut", "typeText", "pasteClipboard",
+  ]);
+  const debounced = !STATEFUL.has(tool);
   const callKey = `${tool}:${JSON.stringify(args || {})}`;
   const now = Date.now();
-  const recent = recentToolCalls.get(callKey);
-  if (recent && now - recent.time < 1500) {
-    console.log(`[Desktop Agent] Debounced duplicate tool execution: ${tool}`);
-    return recent.result;
+  if (debounced) {
+    const recent = recentToolCalls.get(callKey);
+    if (recent && recent.result.ok !== false && now - recent.time < 1500) {
+      console.log(`[Desktop Agent] Debounced duplicate tool execution: ${tool}`);
+      return recent.result;
+    }
   }
 
   const recordResult = (res: { ok: boolean; result?: unknown; error?: string }) => {
@@ -1250,6 +1525,20 @@ $small.Save($ms, [System.Drawing.Imaging.ImageFormat]::Jpeg)
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // Direct tool invocation used by the HUD's proactive-suggestion actions.
+  app.post("/api/execute", async (req, res) => {
+    try {
+      const { tool, args } = req.body || {};
+      if (!tool || typeof tool !== "string") {
+        return res.status(400).json({ error: "Missing 'tool' string." });
+      }
+      const result = await callDesktopAgent(tool, args || {});
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err?.message || String(err) });
     }
   });
 
@@ -3470,7 +3759,7 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
                         text: args.text,
                         confirmedByUser: true
                       });
-                      clientWs.send(JSON.stringify({ type: "memory_sync" }));
+                      clientWs.send(JSON.stringify({ type: "memory_sync", memories: await loadMemories() }));
                       session.sendToolResponse({
                         functionResponses: [{
                           name: fc.name,

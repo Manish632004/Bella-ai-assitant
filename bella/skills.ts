@@ -7,6 +7,7 @@
  * developer plugin loading (.py files that become voice commands).
  */
 import fs from "fs";
+import os from "os";
 import path from "path";
 import { Type } from "@google/genai";
 import {
@@ -51,26 +52,28 @@ function listAllSkills(): SkillManifest[] {
 // ---------------------------------------------------------------------------
 // Code generation + sandbox testing
 // ---------------------------------------------------------------------------
-const PYTHON_RUNNER = (file: string, argsJson: string) => [
-  "import sys, json, io, contextlib",
-  "import importlib.util",
-  `spec = importlib.util.spec_from_file_location("bella_skill", r"${file.replace(/\\/g, "\\\\")}")`,
-  "m = importlib.util.module_from_spec(spec)",
-  "spec.loader.exec_module(m)",
-  "buf = io.StringIO()",
-  "with contextlib.redirect_stdout(buf):",
-  "    result = m.run(json.loads(sys.argv[1]))",
-  "out = str(result if result is not None else '')",
-  "if buf.getvalue().strip(): out = (out + '\\n' + buf.getvalue()).strip()",
-  "print(out[:4000])",
-].join("; ");
-
-async function sandboxTest(file: string): Promise<{ ok: boolean; output: string }> {
-  const py = await findPython();
-  if (!py) return { ok: false, output: "Python interpreter not found on PATH. Install Python 3 to use code skills." };
-  const r = await runCommand(`"${py}" -c "${PYTHON_RUNNER(file, "{}")}" "{}"`, undefined, 45000);
-  return { ok: r.ok && !/traceback/i.test(r.stderr), output: (r.stdout || r.stderr).slice(0, 1500) };
-}
+// The runner lives on disk instead of being passed through `python -c "..."` —
+// inline code gets mangled by cmd.exe quoting on Windows (quotes stripped,
+// spaces split argv), which made every skill install/run fail.
+const RUNNER_SOURCE = `
+import sys, json, io, contextlib, importlib.util
+skill_path = sys.argv[1]
+args_path = sys.argv[2]
+fn_name = sys.argv[3] if len(sys.argv) > 3 else "run"
+with open(args_path, "r", encoding="utf-8") as fh:
+    args = json.load(fh)
+spec = importlib.util.spec_from_file_location("bella_skill", skill_path)
+m = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(m)
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf):
+    fn = getattr(m, fn_name)
+    result = fn(args)
+out = str(result) if result is not None else ""
+if buf.getvalue().strip():
+    out = (out + chr(10) + buf.getvalue()).strip()
+print(out[:4000])
+`;
 
 let pythonCache: string | null = null;
 async function findPython(): Promise<string | null> {
@@ -85,7 +88,37 @@ async function findPython(): Promise<string | null> {
   return null;
 }
 
-async function generateAndInstall(description: string, nameHint?: string, previousError?: string): Promise<{ manifest: SkillManifest; testOutput: string }> {
+/** Execute a skill/plugin file's entry function with JSON args, via the file-based runner. */
+async function execSkillPython(
+  skillFile: string,
+  args: Record<string, unknown>,
+  fnName = "run",
+  timeoutMs = 60000,
+): Promise<{ ok: boolean; output: string }> {
+  const py = await findPython();
+  if (!py) return { ok: false, output: "Python interpreter not found on PATH. Install Python 3 to use code skills." };
+  const runnerFile = path.join(os.tmpdir(), "bella_skill_runner.py");
+  fs.writeFileSync(runnerFile, RUNNER_SOURCE);
+  const argsFile = path.join(os.tmpdir(), `bella_skill_args_${process.pid}_${Date.now()}.json`);
+  fs.writeFileSync(argsFile, JSON.stringify(args || {}));
+  try {
+    const r = await runCommand(
+      `"${py}" "${runnerFile}" "${skillFile}" "${argsFile}" "${fnName}"`,
+      undefined, timeoutMs,
+    );
+    const failed = !r.ok || /traceback/i.test(r.stderr);
+    const combined = ((r.stdout || "") + (r.stderr ? `\n${r.stderr}` : "")).trim();
+    return { ok: !failed, output: combined.slice(0, 1500) };
+  } finally {
+    try { fs.unlinkSync(argsFile); } catch {}
+  }
+}
+
+async function sandboxTest(file: string): Promise<{ ok: boolean; output: string }> {
+  return execSkillPython(file, {}, "run", 45000);
+}
+
+async function generateAndInstall(description: string, nameHint?: string, previousError?: string, forceKind?: "python" | "prompt"): Promise<{ manifest: SkillManifest; testOutput: string }> {
   const apiKey = getCurrentApiKey();
   for (let attempt = 0; attempt < 2; attempt++) {
     const gen = await generateJson<{ name: string; description: string; kind: "python" | "prompt"; content: string }>(
@@ -106,8 +139,11 @@ Use ONLY the Python standard library. Handle errors inside run() by returning a 
     const name = String(gen.name || nameHint || "skill").replace(/[^\w.-]+/g, "-").toLowerCase();
     const existing = loadManifest(name);
     const version = existing ? existing.version + 1 : 1;
+    // Improvements must stay the same flavour — never silently flip a prompt
+    // skill into a python skill (or vice versa).
+    const kind = forceKind || gen.kind;
 
-    if (gen.kind === "prompt") {
+    if (kind === "prompt") {
       const manifest: SkillManifest = { name, description: gen.description || description, type: "prompt", version, createdAt: existing?.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString() };
       ensureDir(skillDir(name));
       fs.writeFileSync(versionPath(name, version, true), String(gen.content));
@@ -156,10 +192,8 @@ async function runSkillByName(name: string, args: Record<string, unknown>): Prom
     return { result: `"${name}" is a prompt skill — its instructions are always active in my thinking.` };
   }
   const file = versionPath(manifest.name, manifest.version, false);
-  const py = await findPython();
-  if (!py) throw new Error("Python not found on PATH.");
-  const r = await runCommand(`"${py}" -c "${PYTHON_RUNNER(file, JSON.stringify(args || {}).replace(/"/g, '\\"'))}" '${JSON.stringify(args || {}).replace(/'/g, "''")}'`, undefined, 60000);
-  const output = (r.stdout || "").trim() || r.stderr.trim();
+  const r = await execSkillPython(file, args || {});
+  const output = r.output.trim();
   return { result: output.slice(0, 2000) || "(no output)", ok: r.ok };
 }
 
@@ -288,6 +322,8 @@ export const skillsModule: ToolModule = {
         const { manifest, testOutput } = await generateAndInstall(
           `${old.description}\n\nIMPROVEMENT REQUEST: ${args.feedback}\n\nCurrent implementation to improve:\n${currentContent.slice(0, 4000)}`,
           old.name,
+          undefined,
+          old.type,
         );
         return { result: `Improved "${manifest.name}" to v${manifest.version}. ${testOutput}` };
       }
@@ -383,16 +419,14 @@ export const skillsModule: ToolModule = {
         const pluginName = String(args.plugin);
         const file = path.join(PLUGINS_ROOT, pluginName.endsWith(".py") ? pluginName : pluginName + ".py");
         if (!fs.existsSync(file)) throw new Error(`Plugin "${pluginName}" not found.`);
-        const py = await findPython();
-        if (!py) throw new Error("Python not found on PATH.");
         const fn = String(args.functionName || "run");
-        const argsJson = JSON.stringify((args.args as Record<string, unknown>) || {}).replace(/'/g, "''");
-        const runner =
-          `import sys,json,importlib.util;spec=importlib.util.spec_from_file_location('p',r'${file.replace(/\\/g, "\\\\")}');` +
-          `m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m);f=getattr(m,'${fn}',None);` +
-          `print(f(json.loads('''${argsJson}''')) if f else 'NO_FUNCTION ${fn}')`;
-        const r = await runCommand(`"${py}" -c "${runner.replace(/"/g, '\\"')}"`, undefined, 60000);
-        return { result: ((r.stdout || r.stderr) || "(no output)").slice(0, 2000), ok: r.ok };
+        const r = await execSkillPython(file, (args.args as Record<string, unknown>) || {}, fn);
+        return {
+          result: r.ok
+            ? (r.output.slice(0, 2000) || `(done: ${fn})`)
+            : `Plugin call failed: ${r.output.slice(0, 500)}`,
+          ok: r.ok,
+        };
       }
     }
     throw new Error(`Unknown skills tool: ${name}`);
