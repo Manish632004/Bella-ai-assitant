@@ -2670,6 +2670,7 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
       const persona = getActivePersona();
       const baseInstructions =
         persona.core +
+        `SESSION OPENING (mandatory): Your very FIRST response in this session — before anything else, even a tool call narration — MUST begin with this exact greeting: "${persona.greeting}" Then continue naturally.\n` +
         "CONVERSATIONAL DISCIPLINE (applies to every persona):\n" +
         "- Behave like a real companion on a voice call—stay connected naturally, do not wait for wake words, and avoid customer-service template phrases (never say 'how may I assist you', 'completed', or 'as an AI').\n" +
         "- DO NOT ANSWER EVERY PAUSE OR BACKGROUND SOUND: Allow natural pauses inside the conversation.\n" +

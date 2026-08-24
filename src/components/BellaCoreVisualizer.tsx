@@ -185,64 +185,172 @@ export const BellaCoreVisualizer: React.FC<BellaCoreVisualizerProps> = ({
 
   const drawFridayScene = (ctx: CanvasRenderingContext2D, w: number, h: number, t: number, vol: number, freq: Uint8Array) => {
     const cx = w / 2, cy = h / 2;
-    const R = Math.min(w, h) * 0.26;
-    fridayRotRef.current += 0.004 + vol * 0.02;
+    const R = Math.min(w, h) * 0.27;
+    fridayRotRef.current += 0.003 + vol * 0.02;
     const rot = fridayRotRef.current;
 
     ctx.save();
     ctx.clearRect(0, 0, w, h);
 
-    // Faint tactical grid backdrop
-    ctx.strokeStyle = "rgba(34,211,238,0.05)";
+    // Deep space backdrop with subtle radial glow
+    const bg = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(w, h) * 0.55);
+    bg.addColorStop(0, "rgba(8,20,32,0.85)");
+    bg.addColorStop(1, "rgba(2,6,14,0)");
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, w, h);
+    // Fine grid, fading outward
+    ctx.strokeStyle = "rgba(56,189,248,0.045)";
     ctx.lineWidth = 1;
-    for (let gx = 0; gx < w; gx += 48) { ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, h); ctx.stroke(); }
-    for (let gy = 0; gy < h; gy += 48) { ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(w, gy); ctx.stroke(); }
+    for (let gx = (cx % 44); gx < w; gx += 44) { ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, h); ctx.stroke(); }
+    for (let gy = (cy % 44); gy < h; gy += 44) { ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(w, gy); ctx.stroke(); }
 
     ctx.translate(cx, cy);
+    ctx.globalCompositeOperation = "lighter";
+    ctx.lineCap = "round";
 
-    // Rotating arc groups (Iron-Man-Jarvis style)
+    const ringGrad = (a: number) => {
+      const g = ctx.createLinearGradient(-R * 1.5, -R * 1.5, R * 1.5, R * 1.5);
+      g.addColorStop(0, `rgba(34,211,238,${a})`);
+      g.addColorStop(0.5, `rgba(226,254,255,${Math.min(1, a + 0.35)})`);
+      g.addColorStop(1, `rgba(59,130,246,${a})`);
+      return g;
+    };
+
+    // ── Layer 1: thin luminous full rings (counter-rotating dash offsets)
+    for (let g = 0; g < 2; g++) {
+      const rr = R * (0.98 - g * 0.18);
+      const dir = g === 0 ? 1 : -1;
+      ctx.save();
+      ctx.rotate(rot * dir * 1.4);
+      ctx.setLineDash([rr * 0.32, rr * 0.12]);
+      ctx.lineDashOffset = t * (g === 0 ? -0.06 : 0.045);
+      ctx.beginPath();
+      ctx.arc(0, 0, rr, 0, Math.PI * 2);
+      ctx.strokeStyle = ringGrad(0.28 + vol * 0.3);
+      ctx.lineWidth = 1.3;
+      ctx.shadowColor = "rgba(34,211,238,0.9)";
+      ctx.shadowBlur = 14;
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.setLineDash([]);
+
+    // ── Layer 2: segmented command arcs (rounded caps, voice-driven spans)
     for (let g = 0; g < 3; g++) {
-      const rr = R * (0.72 + g * 0.24);
+      const rr = R * (0.62 + g * 0.26);
       const dir = g % 2 === 0 ? 1 : -1;
-      const segs = 4 + g * 2;
-      for (let sgi = 0; sgi < segs; sgi++) {
-        const start = rot * dir + (sgi / segs) * Math.PI * 2;
-        const span = (Math.PI * 2 / segs) * (0.42 + (g === 1 ? freq[(g * 7 + sgi * 5) % freq.length] / 400 : vol * 0.25));
+      const speed = rot * dir * (1.6 - g * 0.35);
+      const segs = 3 + g;
+      for (let si = 0; si < segs; si++) {
+        const f = freq[(g * 11 + si * 13) % freq.length] / 255;
+        const span = (Math.PI * 2 / segs) * (0.30 + f * 0.30 + vol * 0.15);
+        const start = speed + (si / segs) * Math.PI * 2;
         ctx.beginPath();
         ctx.arc(0, 0, rr, start, start + span);
-        ctx.strokeStyle = g === 1 ? "rgba(251,191,36,0.75)" : "rgba(34,211,238,0.85)";
-        ctx.lineWidth = g === 0 ? 2.4 : 1.4;
-        ctx.shadowColor = g === 1 ? "rgba(251,191,36,0.8)" : "rgba(34,211,238,0.8)";
-        ctx.shadowBlur = 10 + vol * 14;
+        if (g === 1) ctx.strokeStyle = "rgba(250,204,21,0.85)";
+        else ctx.strokeStyle = ringGrad(0.65 + f * 0.3);
+        ctx.lineWidth = g === 0 ? 3.4 : g === 1 ? 2.2 : 1.5;
+        ctx.shadowColor = g === 1 ? "rgba(250,204,21,0.9)" : "rgba(34,211,238,0.9)";
+        ctx.shadowBlur = 16 + f * 22;
         ctx.stroke();
-        ctx.shadowBlur = 0;
       }
     }
+    ctx.shadowBlur = 0;
 
-    // Center reticle
-    ctx.strokeStyle = "rgba(34,211,238,0.9)";
-    ctx.lineWidth = 1.6;
-    const ret = R * 0.3 * (1 + vol * 0.18);
-    ctx.beginPath(); ctx.arc(0, 0, ret, 0, Math.PI * 2); ctx.stroke();
+    // ── Layer 3: micro tick ring (60 ticks, every 5th bright & longer)
+    ctx.save();
+    ctx.rotate(-rot * 2.2);
+    for (let i = 0; i < 60; i++) {
+      const ang = (i / 60) * Math.PI * 2;
+      const big = i % 5 === 0;
+      const r1 = R * 1.16, r2 = r1 + (big ? 10 : 5) + (big ? vol * 6 : 0);
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(ang) * r1, Math.sin(ang) * r1);
+      ctx.lineTo(Math.cos(ang) * r2, Math.sin(ang) * r2);
+      ctx.strokeStyle = big ? "rgba(165,243,252,0.9)" : "rgba(34,211,238,0.38)";
+      ctx.lineWidth = big ? 1.8 : 1;
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // ── Layer 4: radar sweep wedge with trailing fade
+    ctx.save();
+    ctx.rotate(rot * 0.7);
+    const sweep = ctx.createConicGradient ? null : null;
+    const wed = Math.PI * 0.42;
+    for (let i = 0; i < 16; i++) {
+      const a0 = -i * (wed / 16);
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.arc(0, 0, R * 1.08, a0 - wed / 16, a0);
+      ctx.closePath();
+      ctx.fillStyle = `rgba(34,211,238,${0.05 * (16 - i) / 16})`;
+      ctx.fill();
+    }
+    ctx.restore();
+
+    // ── Core: hexagon reactor + orbiting nodes
+    const hexR = R * 0.30 * (1 + vol * 0.14 + Math.sin(t * 0.004) * 0.03);
+    ctx.save();
+    ctx.rotate(t * 0.0012);
     ctx.beginPath();
-    ctx.moveTo(-ret * 1.5, 0); ctx.lineTo(-ret * 0.7, 0);
-    ctx.moveTo(ret * 0.7, 0); ctx.lineTo(ret * 1.5, 0);
-    ctx.moveTo(0, -ret * 1.5); ctx.lineTo(0, -ret * 0.7);
-    ctx.moveTo(0, ret * 0.7); ctx.lineTo(0, ret * 1.5);
+    for (let i = 0; i <= 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      const x = Math.cos(a) * hexR, y = Math.sin(a) * hexR;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    const coreG = ctx.createRadialGradient(0, 0, 0, 0, 0, hexR);
+    coreG.addColorStop(0, `rgba(224,255,255,${0.75 + vol * 0.25})`);
+    coreG.addColorStop(0.55, "rgba(34,211,238,0.35)");
+    coreG.addColorStop(1, "rgba(8,47,73,0.15)");
+    ctx.fillStyle = coreG;
+    ctx.fill();
+    ctx.strokeStyle = "rgba(226,254,255,0.95)";
+    ctx.lineWidth = 1.6;
+    ctx.shadowColor = "rgba(34,211,238,1)";
+    ctx.shadowBlur = 20;
     ctx.stroke();
-    ctx.fillStyle = `rgba(165,243,252,${0.5 + vol * 0.5})`;
-    ctx.beginPath(); ctx.arc(0, 0, 4 + vol * 5, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+
+    // Orbiting energy nodes
+    for (let n = 0; n < 3; n++) {
+      const na = t * (0.0011 + n * 0.0004) * (n % 2 ? -1 : 1) + n * 2.09;
+      const nr = hexR * 1.9;
+      ctx.beginPath();
+      ctx.arc(Math.cos(na) * nr, Math.sin(na) * nr, 2.4 + vol * 3, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(226,254,255,0.95)";
+      ctx.shadowColor = "rgba(34,211,238,1)";
+      ctx.shadowBlur = 12;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
 
     ctx.restore();
 
-    // Bottom EQ bars
-    const bars = 40, bw = w / bars;
-    ctx.fillStyle = "rgba(34,211,238,0.65)";
+    // ── Bottom EQ: mirrored bars with rounded caps + reflection
+    const bars = 48, bw = w / bars;
+    ctx.globalCompositeOperation = "lighter";
     for (let i = 0; i < bars; i++) {
       const v = freq[Math.floor((i / bars) * freq.length)] / 255;
-      const bh = 6 + v * 70 * (0.5 + vol);
-      ctx.fillRect(i * bw + 2, h - 14 - bh, bw - 4, bh);
+      const bh = 4 + v * 64 * (0.45 + vol);
+      const x = i * bw + bw / 2;
+      const y = h - 26;
+      ctx.beginPath();
+      ctx.moveTo(x, y - bh);
+      ctx.lineTo(x, y);
+      ctx.strokeStyle = `rgba(103,232,249,${0.35 + v * 0.6})`;
+      ctx.lineWidth = Math.max(2, bw - 6);
+      ctx.lineCap = "round";
+      ctx.stroke();
+      // reflection
+      ctx.beginPath();
+      ctx.moveTo(x, y + 3);
+      ctx.lineTo(x, y + 3 + bh * 0.35);
+      ctx.strokeStyle = `rgba(34,211,238,${0.10 + v * 0.15})`;
+      ctx.stroke();
     }
+    ctx.globalCompositeOperation = "source-over";
   };
 
   const drawVenomScene = (ctx: CanvasRenderingContext2D, w: number, h: number, t: number, vol: number, freq: Uint8Array) => {

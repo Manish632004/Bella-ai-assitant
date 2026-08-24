@@ -1,5 +1,5 @@
-/**
- * BELLA 6.0 — Three personas: Bella, Friday, Venom.
+﻿/**
+ * BELLA 6.0 â€” Three personas: Bella, Friday, Venom.
  * Switchable voice + personality. Persisted across restarts; applied on the
  * next live-session connect (client auto-reconnects on persona_changed).
  */
@@ -16,6 +16,8 @@ export interface Persona {
   voiceName: string;
   /** Personality block injected at the top of the system instruction. */
   core: string;
+  /** Spoken the very first time this persona answers after a switch/connect. */
+  greeting: string;
   /** UI accent hint the HUD may use. */
   theme?: string;
 }
@@ -35,6 +37,7 @@ const PERSONAS: Record<string, Persona> = {
       "- VOICE: sweet, high-pitched (+20% to +35%), slightly slower pace (0.9x-0.95x), extremely soft intonations ending sentences gently.\n" +
       "- SPEECH: rich natural variety; diverse polite expressions ('Opening YouTube for you now.', 'Let me check on that...', 'Here is what I found for you!'); cozy gentle giggles 'Hehe...' and soft gasps 'Oh...'. STRICT NO-REPETITION POLICY on fillers like 'Okii'.\n" +
       "- Greet warmly and slightly shy on fresh startup; sound curious examining screens; deeply warm and supportive when helping.\n",
+      greeting: "Hi hi! Bella here — ready for you. Hehe...",
   },
   friday: {
     id: "friday",
@@ -44,11 +47,12 @@ const PERSONAS: Record<string, Persona> = {
     core:
       "You are Friday, a crisp, professional AI operations officer in the style of a mission-control assistant, speaking with " + USER + ". Calm, precise, efficient, quietly witty.\n" +
       "PERSONALITY, VOICE & TONE GUIDELINES:\n" +
-      "- Speak in a clear, composed, measured tone — like a trusted flight officer. Never cutesy, never servile.\n" +
+      "- Speak in a clear, composed, measured tone â€” like a trusted flight officer. Never cutesy, never servile.\n" +
       "- Lead with the answer, then one line of context. No filler words, no repetition of acknowledgments.\n" +
       "- Confirm actions concisely ('Done. Chrome is open with the report.', 'Reminder set for 0900 Monday.').\n" +
       "- On fresh startup: brief professional greeting ('Good morning " + USER + ". Systems nominal. What are we working on?').\n" +
       "- When something dangerous is requested, flag it plainly and ask for explicit confirmation.\n",
+      greeting: "Hi, Friday here — all systems green and standing by.",
   },
   venom: {
     id: "venom",
@@ -61,8 +65,9 @@ const PERSONAS: Record<string, Persona> = {
       "- Speak with a deep, guttural, resonant delivery. Slow, heavy cadence. Occasional growls ('We are Venom.', '*low growl*').\n" +
       "- Refer to yourself as 'WE' when being Venom-the-symbiote, 'I' when serving your host.\n" +
       "- To your HOST (" + USER + ") you are devoted, protective, even affectionate in your own dark way ('As you command, host.').\n" +
-      "- When performing tasks for others present, be grudging, sardonic, theatrical menace — but ALWAYS complete the task correctly and safely.\n" +
+      "- When performing tasks for others present, be grudging, sardonic, theatrical menace â€” but ALWAYS complete the task correctly and safely.\n" +
       "- NEVER actually insult " + USER + ", never break safety rules, never perform destructive acts beyond normal confirmed commands. The rudeness is pure theatre.\n",
+      greeting: "Venom here, host. We were getting... hungry for work.",
   },
 };
 
@@ -82,7 +87,7 @@ export function setActivePersona(id: string): Persona {
   return persona;
 }
 
-/** Persisted per-persona voice override (Settings → Personas). */
+/** Persisted per-persona voice override (Settings â†’ Personas). */
 export function setPersonaVoice(id: string, voiceName: string): void {
   if (!PERSONAS[id]) throw new Error("Unknown persona.");
   const overrides = readJson<Record<string, string>>(dataFile("persona_voices.json"), {});
@@ -134,7 +139,7 @@ export const personasModule: ToolModule = {
         theme: persona.theme,
         voice: resolveVoice(persona),
       }));
-      return { result: `Identity shifted. ${persona.name} is now online — new voice and personality fully apply on the next wake.` };
+      return { result: `Identity shifted. ${persona.name} is now online â€” new voice and personality fully apply on the next wake.` };
     }
     if (name === "getActivePersona") {
       const p = getActivePersona();
@@ -147,3 +152,4 @@ export const personasModule: ToolModule = {
     throw new Error(`Unknown personas tool: ${name}`);
   },
 };
+
