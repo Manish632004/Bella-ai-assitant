@@ -437,6 +437,26 @@ export default function App() {
       for (let i = 0; i < arr.length; i++) binary += String.fromCharCode(arr[i]);
       return btoa(binary);
     };
+    // Wait for BELLA to finish speaking before recording, otherwise the
+    // "samples" capture her TTS instead of the user.
+    const waitForQuiet = async (maxMs = 20000) => {
+      const start = Date.now();
+      setModelCaption("🎙️ Finishing up — get ready to say “Hey Bella”…");
+      while (Date.now() - start < maxMs) {
+        const speaking = stateRef.current === "speaking"
+          || Date.now() < (((globalThis as any).__bellaAudioUntil as number) || 0);
+        if (!speaking) return;
+        await new Promise(r => setTimeout(r, 250));
+      }
+    };
+
+    // Mute the live-session mic while recording so Gemini can't interrupt
+    // or react to the enrollment takes.
+    (globalThis as any).__bellaEnrolling = true;
+
+    await waitForQuiet();
+    await new Promise(r => setTimeout(r, 700)); // let speaker echo decay
+
     setModelCaption("🎙️ Voice enrollment — say “Hey Bella”… (1/3)");
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -444,6 +464,8 @@ export default function App() {
       const ctx = new AudioContext();
       for (let i = 0; i < 3; i++) {
         setModelCaption(`🎙️ Say “Hey Bella” clearly… (${i + 1}/3)`);
+        // Brief beat so the user can start speaking right as recording begins.
+        await new Promise(r => setTimeout(r, 800));
         const recorder = new MediaRecorder(stream);
         const chunks: Blob[] = [];
         recorder.ondataavailable = e => chunks.push(e.data);
@@ -478,6 +500,7 @@ export default function App() {
       setModelCaption("⚠️ Mic access failed — check Windows mic permission");
       setErrorText(`Voice enrollment failed: ${err.message || err}`);
     } finally {
+      (globalThis as any).__bellaEnrolling = false;
       // Cancel any pending clear from a previous run so overlapping
       // enrollments can't erase each other's captions.
       if (enrollCaptionTimerRef.current) clearTimeout(enrollCaptionTimerRef.current);

@@ -256,6 +256,9 @@ export class BellaAudioSession {
 
           this.micProcessorNode.onaudioprocess = (e) => {
             if (this.currentState === "disconnected" || this.currentState === "connecting") return;
+            // Voice enrollment in progress — don't let Gemini hear/react to
+            // the "Hey Bella" takes.
+            if ((globalThis as any).__bellaEnrolling) return;
             
             const channelData = e.inputBuffer.getChannelData(0);
             
