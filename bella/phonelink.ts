@@ -14,6 +14,7 @@ import express from "express";
 import { Type } from "@google/genai";
 import { readJson, writeJson, dataFilePath, readSecretJson, writeSecretJson } from "./util";
 import type { ToolModule } from "./types";
+import { httpsReady, HTTPS_PORT } from "./phonecerts";
 
 // ---------------------------------------------------------------------------
 // State
@@ -28,14 +29,14 @@ interface PhoneDevice {
 interface PendingCommand {
   id: string;
   deviceId: string;
-  kind: "ask" | "notify";
+  kind: "ask" | "notify" | "locate";
   text: string;
   createdAt: number;
   answer?: string;
 }
 
 const DEVICES_FILE = dataFilePath("phone_devices.json");
-const loadDevices = (): PhoneDevice[] => readSecretJson<PhoneDevice[]>(DEVICES_FILE, []);
+export const loadDevices = (): PhoneDevice[] => readSecretJson<PhoneDevice[]>(DEVICES_FILE, []);
 const saveDevices = (list: PhoneDevice[]) => writeSecretJson(DEVICES_FILE, list);
 
 let pairToken = "";
@@ -50,12 +51,37 @@ const answerWaiters = new Map<string, (answer: string | null) => void>();
 let wakeRequested = false;
 
 /** Rolling history of everything pushed to each device (latest last, cap 50). */
-interface HistoryItem { deviceId: string; text: string; t: string; }
+export interface HistoryItem { deviceId: string; text: string; t: string; }
 const history = new Map<string, HistoryItem[]>();
 function pushHistory(deviceId: string, text: string): void {
   const list = history.get(deviceId) || [];
   list.push({ deviceId, text, t: new Date().toISOString() });
   history.set(deviceId, list.slice(-50));
+}
+
+/**
+ * Hooks fired whenever a notification is queued for a phone — the companion
+ * app module registers a Web-Push sender here so messages reach a locked
+ * phone, not just one with the page open.
+ */
+const notifyHooks: ((deviceId: string, text: string) => void)[] = [];
+export function onPhoneNotify(fn: (deviceId: string, text: string) => void): void {
+  notifyHooks.push(fn);
+}
+function emitNotify(deviceId: string, text: string): void {
+  for (const fn of notifyHooks) { try { fn(deviceId, text); } catch { /* hook errors never break the queue */ } }
+}
+
+/** Queue a push-style notification for a paired device (history + poll + web push). */
+export function queueNotification(
+  dev: PhoneDevice,
+  text: string,
+  kind: PendingCommand["kind"] = "notify",
+): void {
+  const id = `n${Date.now()}${Math.floor(Math.random() * 1e4)}`;
+  pending.set(id, { id, deviceId: dev.id, kind, text, createdAt: Date.now() });
+  pushHistory(dev.id, text);
+  emitNotify(dev.id, text);
 }
 
 let cachedLanIp: string | null = null;
@@ -94,7 +120,12 @@ async function lanAddress(): Promise<string> {
 }
 
 export async function getPairUrl(): Promise<string> {
-  return `http://${await lanAddress()}:${process.env.PORT || 3000}/api/phone/link?t=${pairToken}`;
+  const ip = await lanAddress();
+  const port = process.env.PORT || 3000;
+  // Prefer HTTPS once the local CA exists — it unlocks mic, push, geo and
+  // PWA install on the phone. HTTP stays as the fallback.
+  if (httpsReady()) return `https://${ip}:${HTTPS_PORT}/api/phone/link?t=${pairToken}`;
+  return `http://${ip}:${port}/api/phone/link?t=${pairToken}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -109,21 +140,36 @@ const LINK_PAGE = `<!DOCTYPE html>
  h1{font-size:1.4rem} .card{background:#131a2e;border-radius:14px;padding:16px;margin:12px 0}
  input,button{font-size:1rem;border-radius:10px;padding:12px;width:100%;box-sizing:border-box;border:1px solid #2a3557;background:#0d1425;color:#fff}
  button{background:#5b6cff;border:none;margin-top:10px;font-weight:600}
+ button.secondary{background:#232c4d}
  #log div{padding:8px;border-bottom:1px solid #222c4d}
+ small{color:#8b95b3}
 </style></head><body>
 <h1>🔔 BELLA Phone Link</h1>
+<div class="card" id="certstep" style="display:none">
+ <b>One-time setup — unlock everything</b>
+ <p>Your PC runs its own private certificate so this connection can be fully
+ secure. Install it once to enable <i>voice talk-back, push notifications,
+ find-my-phone</i> and installing BELLA as a real app.</p>
+ <button class="secondary" onclick="location='/api/phone/ca.crt'">1 · Download certificate</button>
+ <p><small>Then on Android: Settings → Security → More security settings →
+ Encryption & credentials → Install a certificate → CA certificate → pick the
+ downloaded file. Come back here when done.</small></p>
+</div>
 <div class="card" id="setup">
  <p>Give this device a name to pair it with BELLA on your PC.</p>
  <input id="name" placeholder="e.g. Manish's Phone"/>
  <button onclick="register()">Pair device</button>
 </div>
 <div id="main" style="display:none">
- <div class="card"><b id="devname"></b> paired ✓</div>
+ <div class="card"><b id="devname"></b> paired ✓<br/>
+  <button onclick="location='/api/phone/app'">Open BELLA Companion app →</button>
+ </div>
  <div class="card"><input id="wake" readonly value="Tap to wake BELLA on your PC"/><button onclick="wake()">Wake BELLA</button></div>
  <div class="card"><h3>Inbox from BELLA</h3><div id="log"></div></div>
  <div class="card" id="askbox" style="display:none"><b id="askq"></b><input id="ans" placeholder="Type your answer…"/><button onclick="sendAnswer()">Answer</button></div>
 </div>
 <script>
+if(!window.isSecureContext)document.getElementById('certstep').style.display='block';
 const T=new URLSearchParams(location.search).get('t');
 let dev=JSON.parse(localStorage.getItem('bella_phone')||'null');
 async function api(p,body){const r=await fetch('/api/phone/'+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});return r.json();}
@@ -143,11 +189,16 @@ async function loadHistory(){try{
 function addLog(t){const d=document.createElement('div');d.textContent=t;document.getElementById('log').prepend(d);}
 async function poll(){if(!dev)return;try{
  const r=await fetch('/api/phone/poll?deviceId='+dev.id+'&deviceToken='+dev.token);
- if(r.status===200){const c=await r.json();
-  if(c.kind==='notify'){addLog('🔔 '+c.text);}
-  else if(c.kind==='ask'){window._cmd=c;document.getElementById('askq').textContent=c.text;
-   document.getElementById('askbox').style.display='block';addLog('❓ '+c.text);}}
-}catch(e){}}
+ if(r.status===204){reportStatus();return;}
+ if(r.status!==200)return;const c=await r.json();
+ if(c.kind==='notify'){addLog('🔔 '+c.text);}
+ else if(c.kind==='ask'){window._cmd=c;document.getElementById('askq').textContent=c.text;
+  document.getElementById('askbox').style.display='block';addLog('❓ '+c.text);}}
+catch(e){}}
+let lastReport=0;
+function reportStatus(){ // battery heartbeat while the page is open
+ if(Date.now()-lastReport<240000||!navigator.getBattery)return;navigator.getBattery().then(b=>{
+  lastReport=Date.now();api('device-status',{deviceId:dev.id,deviceToken:dev.token,battery:Math.round(b.level*100),charging:b.charging});}).catch(()=>{});}
 setInterval(poll,3000);
 (async()=>{if(dev){const ok=await fetch('/api/phone/poll?deviceId='+dev.id+'&deviceToken='+dev.token);if(ok.status!==401)show();else dev=null;}})();
 </script></body></html>`;
@@ -166,9 +217,12 @@ phonelinkRouter.get("/pair-info", async (_req, res) => {
       if (net.family === "IPv4" && !net.internal && !/^169\.254\./.test(net.address)) candidates.push(net.address);
     }
   }
+  const port = process.env.PORT || 3000;
+  const base = (ip: string) => httpsReady() ? `https://${ip}:${HTTPS_PORT}` : `http://${ip}:${port}`;
   res.json({
     pairUrl: await getPairUrl(),
-    allUrls: candidates.map(ip => `http://${ip}:${process.env.PORT || 3000}/api/phone/link?t=${pairToken}`),
+    allUrls: candidates.map(ip => `${base(ip)}/api/phone/link?t=${pairToken}`),
+    appUrl: candidates.length ? `${base(candidates[0])}/api/phone/app` : "/api/phone/app",
     hint: "If the QR doesn't load, allow BELLA (Node.js) through Windows Firewall for Private networks, and make sure the phone is on the same Wi-Fi.",
     devices: loadDevices().map(d => ({ id: d.id, name: d.name, lastSeen: d.lastSeen })),
   });
@@ -205,12 +259,20 @@ function authDevice(req: express.Request): PhoneDevice | null {
 phonelinkRouter.get("/poll", (req, res) => {
   const dev = authDevice(req);
   if (!dev) return res.status(401).json({ error: "Unknown device." });
+  // Drop stale commands so a dead entry never blocks the queue.
+  const cutoff = Date.now() - 10 * 60 * 1000;
+  for (const [id, c] of pending) {
+    if (c.createdAt < cutoff || (c.kind === "ask" && c.answer !== undefined)) pending.delete(id);
+  }
   const next = Array.from(pending.values()).find(c => c.deviceId === dev.id);
   if (!next) return res.status(204).end();
   if (next.kind === "ask" && next.answer !== undefined) {
     pending.delete(next.id);
     return res.status(204).end();
   }
+  // notify/locate are fire-and-forget: delete on delivery so they can't be
+  // re-delivered forever and block everything queued behind them.
+  if (next.kind !== "ask") pending.delete(next.id);
   res.json({ id: next.id, kind: next.kind, text: next.text });
 });
 
@@ -260,6 +322,7 @@ function pickDevice(name?: string): PhoneDevice | null {
   }
   return devices.sort((a, b) => b.lastSeen.localeCompare(a.lastSeen))[0];
 }
+export { pickDevice };
 
 export const phonelinkModule: ToolModule = {
   name: "phonelink",
@@ -330,15 +393,7 @@ export const phonelinkModule: ToolModule = {
       case "sendToPhone": {
         const dev = pickDevice(args.device ? String(args.device) : undefined);
         if (!dev) throw new Error("No phone paired yet.");
-        const id = `n${Date.now()}`;
-        pending.set(id, {
-          id,
-          deviceId: dev.id,
-          kind: "notify",
-          text: String(args.text),
-          createdAt: Date.now(),
-        });
-        pushHistory(dev.id, String(args.text));
+        queueNotification(dev, String(args.text));
         return { result: `Sent to ${dev.name}.` };
       }
       case "listPairedPhones": {

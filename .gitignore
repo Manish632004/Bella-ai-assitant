@@ -26,6 +26,12 @@ reminders.json
 expenses.json
 whatsapp_contacts.json
 phone_devices.json
+phone_certs.json
+webpush_vapid.json
+webpush_subs.json
+phone_share_secret.json
+phone_last_seen.json
+Desktop/
 guardian.json
 agents.json
 coding_engine.json

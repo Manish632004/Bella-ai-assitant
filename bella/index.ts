@@ -16,6 +16,7 @@ import { documentsModule } from "./documents";
 import { agentsModule } from "./agents";
 import { emailModule, whatsappModule, expensesModule } from "./comms";
 import { phonelinkModule } from "./phonelink";
+import { phoneAppModule } from "./phoneapp";
 import { creatorModule } from "./creator";
 import { extrasModule, startClipboardWatcher } from "./extras";
 import { skillsModule } from "./skills";
@@ -39,6 +40,7 @@ const MODULES: ToolModule[] = [
   whatsappModule,
   expensesModule,
   phonelinkModule,
+  phoneAppModule,
   creatorModule,
   extrasModule,
   skillsModule,

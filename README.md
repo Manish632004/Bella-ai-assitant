@@ -44,6 +44,7 @@ First run: paste a Gemini API key in the gate screen. Everything else is voice.
 | "This is Priya, remember her" | Face enrolled; "who is this?" works forever after |
 | "Start recording… stop. Upload as Episode 12" | Screen recording → YouTube upload |
 | "Ask my phone if I got an OTP" | Phone Link (QR pairing over LAN) |
+| "Find my phone" | Locates your paired phone via the companion app |
 
 ## Capability map
 
@@ -55,6 +56,7 @@ First run: paste a Gemini API key in the gate screen. Everything else is voice.
 | **Agents** | Sub-agents (parallel), research deep-dives, coding agent (Claude Code / ManishCode engines, lessons learned), Hermes bridge, document jobs |
 | **Documents** | Real Word/Excel/PDF creation & Excel editing, résumé builder, folder indexing Q&A |
 | **Comms** | Email (IMAP/SMTP), WhatsApp automation, expense extraction from bank mails |
+| **Phone** | QR-paired Android companion: installable PWA with full BELLA chat (voice + text), web-push notifications, PC remote control, photo/file drop, Android share receiving, find-my-phone — served by the PC's own HTTPS authority (`:4443`, local CA) with HTTP fallback |
 | **Creator** | Screen recording, live commentary mode, YouTube analytics + OAuth uploads |
 | **Memory** | Sentence-level facts, session continuity, temporal recall — all local JSON |
 | **Growth** | Self-authored Python skills w/ sandbox testing + rollback, marketplace, plugins, macros (record/replay/schedule) |
@@ -65,8 +67,8 @@ First run: paste a Gemini API key in the gate screen. Everything else is voice.
 
 ```
 electron/main.cjs ── spawns ──► dist/server.cjs  (Express :3000 + WS /live)
-                                     │
-        Gemini Live (voice↔voice) ◄──┘
+                                      │            └─ HTTPS :4443 (local CA → phone companion PWA)
+         Gemini Live (voice↔voice) ◄──┘
              │ tool calls
              ├─ bella/* capability modules (this repo's brain)
              ├─ Python desktop_agent :8765 (pyautogui/pywin32/PIL/playwright)

@@ -65,6 +65,7 @@ import { recordStep } from "./bella/macros";
 import { activityContextBlock } from "./bella/activity";
 import { guardianRouter } from "./bella/guardian";
 import { phonelinkRouter } from "./bella/phonelink";
+import { createPhoneAppRouter, registerPhoneExecutor, startPhoneHttps } from "./bella/phoneapp";
 import { facesRouter } from "./bella/faces";
 import { loadReminders, describeWhen } from "./bella/scheduler";
 import { loadExpenses } from "./bella/comms";
@@ -1271,7 +1272,8 @@ async function startServer() {
   const app = express();
   const PORT = parseInt(process.env.PORT || "3000", 10) || 3000;
   
-  app.use(express.json());
+  // 30mb so companion uploads (voice clips, photos) survive the global parser.
+  app.use(express.json({ limit: "30mb" }));
 
   // Memory REST API Endpoints
   app.get("/api/memories", async (req, res) => {
@@ -1948,6 +1950,20 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
   // ---------------------------------------------------------------------------
   app.use("/api/guardian", express.json({ limit: "20mb" }), guardianRouter);
   app.use("/api/phone", express.json(), phonelinkRouter);
+  // BELLA Companion PWA — full phone app (chat brain, PC remote, push, uploads).
+  registerPhoneExecutor(async (name, args) => {
+    if (isBellaTool(name)) {
+      return executeBellaTool(name, args as Record<string, unknown>, {
+        apiKey: getGeminiApiKey() || "",
+        clientWs: null,
+        sessionId: "phone",
+      });
+    }
+    const r = await callDesktopAgent(name, args);
+    if (!r.ok) throw new Error(r.error || "Tool failed.");
+    return r.result ?? "done";
+  }, bellaDeclarations as unknown[]);
+  app.use("/api/phone", createPhoneAppRouter());
   app.use("/api/bella/faces", express.json({ limit: "30mb" }), facesRouter);
   app.get("/api/bella/stats", (_req, res) => {
     res.json({
@@ -4388,6 +4404,10 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
   server.listen(PORT, "0.0.0.0", () => {
     logStartup(`BELLA V2 server started on http://localhost:${PORT}`);
     console.log(`[Server] Running on http://localhost:${PORT}`);
+    // Companion HTTPS listener (local CA) — best effort; HTTP keeps working.
+    startPhoneHttps(app).catch((e) =>
+      console.warn(`[Phone HTTPS] startup error: ${e?.message || e}`)
+    );
     // Kick off the desktop agent (probe + auto-spawn) immediately on boot.
     ensureDesktopAgent().catch((e) =>
       console.warn(`[Desktop Agent] Boot probe failed: ${e?.message || e}`)
