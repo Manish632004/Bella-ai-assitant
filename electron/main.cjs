@@ -269,9 +269,26 @@ if (!gotSingleInstanceLock) {
 }
 
 // ---------------------------------------------------------------------------
-// Backend lifecycle
+// Backend lifecycle — supervised: crashes are logged and the backend is
+// restarted automatically instead of killing the whole app.
 // ---------------------------------------------------------------------------
+const BACKEND_LOG = path.join(APP_ROOT, 'logs', 'backend.log');
+let backendLogStream = null;
+let backendRespawns = 0;
+let backendRespawnTimer = null;
+
+function logBackend(line) {
+  try {
+    if (!backendLogStream) {
+      fs.mkdirSync(path.dirname(BACKEND_LOG), { recursive: true });
+      backendLogStream = fs.createWriteStream(BACKEND_LOG, { flags: 'a' });
+    }
+    backendLogStream.write(line);
+  } catch { /* logging must never crash the app */ }
+}
+
 function startBackend() {
+  if (serverProcess && !serverProcess.killed) return; // already running
   if (!fs.existsSync(SERVER_ENTRY)) {
     throw new Error(
       `Backend bundle not found at ${SERVER_ENTRY}. Run "npm run build" first.`,
@@ -328,14 +345,42 @@ function startBackend() {
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   });
+  logBackend(`[supervisor] spawned pid=${serverProcess.pid} at ${new Date().toISOString()}\n`);
 
-  serverProcess.stdout?.on('data', (d) => process.stdout.write(`[server] ${d}`));
-  serverProcess.stderr?.on('data', (d) => process.stderr.write(`[server] ${d}`));
+  // Stable for 5 minutes? forgive past crashes.
+  setTimeout(() => {
+    if (serverProcess && !serverProcess.killed) backendRespawns = 0;
+  }, 5 * 60_000);
+
+  serverProcess.stdout?.on('data', (d) => {
+    process.stdout.write(`[server] ${d}`);
+    logBackend(d);
+  });
+  serverProcess.stderr?.on('data', (d) => {
+    process.stderr.write(`[server] ${d}`);
+    logBackend(d);
+  });
   serverProcess.on('exit', (code, signal) => {
-    if (!isQuitting) {
+    logBackend(`[supervisor] backend exited code=${code} signal=${signal} at ${new Date().toISOString()}\n`);
+    serverProcess = null;
+    if (isQuitting) return;
+
+    // Crash policy: restart with backoff. Only bother the user after
+    // repeated failures — a single hiccup should never kill BELLA.
+    if (backendRespawns < 8) {
+      backendRespawns += 1;
+      const delayMs = Math.min(30_000, 1500 * backendRespawns);
+      console.warn(`[supervisor] backend died (code ${code}) — restarting in ${delayMs}ms`);
+      backendRespawnTimer = setTimeout(() => {
+        try { startBackend(); } catch (e) {
+          console.error('[supervisor] respawn failed:', e.message);
+        }
+      }, delayMs);
+    } else {
       dialog.showErrorBox(
         'BELLA backend stopped',
-        `The BELLA backend process exited unexpectedly (code ${code}, signal ${signal}).`,
+        `The BELLA backend exited repeatedly (last code ${code}, signal ${signal}). ` +
+        `See logs\\backend.log for details.`,
       );
       app.quit();
     }
@@ -343,6 +388,10 @@ function startBackend() {
 }
 
 function stopBackend() {
+  if (backendRespawnTimer) {
+    clearTimeout(backendRespawnTimer);
+    backendRespawnTimer = null;
+  }
   if (serverProcess && !serverProcess.killed) {
     try {
       if (process.platform === 'win32') {
