@@ -543,6 +543,14 @@ $('tab-chat').classList.add('on');
 
 /* ---------- pairing ---------- */
 (async function init(){
+  /* Native companion hands us credentials in the URL — adopt them once,
+     then strip them so they never linger in the address bar or history. */
+  var qs=new URLSearchParams(location.search);
+  if(qs.get('deviceId')&&qs.get('deviceToken')){
+    dev={id:qs.get('deviceId'),token:qs.get('deviceToken'),name:qs.get('name')||'My Phone'};
+    localStorage.setItem('bella_phone',JSON.stringify(dev));
+    history.replaceState(null,'','/api/phone/app');
+  }
   try{dev=JSON.parse(localStorage.getItem('bella_phone')||'null')}catch(e){dev=null}
   if(dev){
     var r=await fetch('/api/phone/poll?deviceId='+encodeURIComponent(dev.id)+'&deviceToken='+encodeURIComponent(dev.token));
@@ -807,6 +815,17 @@ export function createPhoneAppRouter(): express.Router {
   // ---- public asset routes -------------------------------------------------
   router.get("/app", (_req, res) => {
     res.type("html").send(APP_PAGE);
+  });
+  // The native Android companion — built by scripts/build-apk.ps1.
+  router.get("/app.apk", (_req, res) => {
+    const file = path.join(ICONS_DIR, "bella.apk");
+    if (!fs.existsSync(file)) {
+      return res.status(404).type("text").send(
+        "BELLA's Android app isn't built yet. Run scripts/build-apk.ps1 on the PC.");
+    }
+    res.set("Content-Type", "application/vnd.android.package-archive")
+      .set("Content-Disposition", 'attachment; filename="bella.apk"')
+      .sendFile(file);
   });
   router.get("/manifest.webmanifest", (_req, res) => {
     res.type("application/manifest+json").send(manifestJson());

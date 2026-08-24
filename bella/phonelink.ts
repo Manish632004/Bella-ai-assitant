@@ -14,7 +14,6 @@ import express from "express";
 import { Type } from "@google/genai";
 import { readJson, writeJson, dataFilePath, readSecretJson, writeSecretJson } from "./util";
 import type { ToolModule } from "./types";
-import { httpsReady, HTTPS_PORT } from "./phonecerts";
 
 // ---------------------------------------------------------------------------
 // State
@@ -82,13 +81,71 @@ export function queueNotification(
   pending.set(id, { id, deviceId: dev.id, kind, text, createdAt: Date.now() });
   pushHistory(dev.id, text);
   emitNotify(dev.id, text);
+  // Mirror to the native companion's command channel so the APK can raise a
+  // real Android notification even with no browser/PWA open.
+  queueDeviceCommand(dev.id, "notify", { text }, 0).catch(() => { /* best effort */ });
+}
+
+// ---------------------------------------------------------------------------
+// Native companion (APK) command channel — PC → phone control
+// ---------------------------------------------------------------------------
+interface DeviceCommand {
+  id: string;
+  type: string;                       // notify | openApp | readNotifications | ring | locate | battery
+  params: Record<string, unknown>;
+}
+const deviceQueues = new Map<string, DeviceCommand[]>();
+const deviceWaiters = new Map<string, (result: string | null) => void>();
+
+/**
+ * Queue a command for the native app. Resolves with the phone's result
+ * string, or null on timeout / when waitMs=0 (fire-and-forget).
+ */
+export function queueDeviceCommand(
+  deviceId: string,
+  type: string,
+  params: Record<string, unknown> = {},
+  waitMs = 25000,
+): Promise<string | null> {
+  const id = `c${Date.now()}${Math.floor(Math.random() * 1e4)}`;
+  const list = deviceQueues.get(deviceId) || [];
+  list.push({ id, type, params });
+  deviceQueues.set(deviceId, list);
+  if (!waitMs) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      if (deviceWaiters.has(id)) { deviceWaiters.delete(id); resolve(null); }
+    }, waitMs);
+    deviceWaiters.set(id, (result) => {
+      clearTimeout(timer);
+      deviceWaiters.delete(id);
+      resolve(result);
+    });
+  });
 }
 
 let cachedLanIp: string | null = null;
-async function lanAddress(): Promise<string> {
-  if (cachedLanIp) return cachedLanIp;
-  // Prefer the adapter whose subnet contains the default gateway (skips
-  // VMware/Hyper-V virtual adapters that break QR pairing).
+let lanProbe: Promise<string> | null = null;
+async function probeLanAddress(): Promise<string> {
+  // Best signal: ask the OS which source address it would use to reach the
+  // internet (UDP "connect" sends no packets). This is always the adapter on
+  // the network phones actually share with this PC, skipping VMware/Hyper-V
+  // virtual adapters that break QR pairing.
+  try {
+    const dgram = await import("dgram");
+    const ip = await new Promise<string>((resolve) => {
+      const s = dgram.createSocket("udp4");
+      const done = (v: string) => { try { s.close(); } catch { /* already closed */ } resolve(v); };
+      s.on("error", () => done(""));
+      s.connect(53, "8.8.8.8", () => {
+        const addr = s.address()?.address || "";
+        done(/^127\./.test(addr) ? "" : addr);
+      });
+      setTimeout(() => done(""), 1500);
+    });
+    if (ip) return ip;
+  } catch { /* fall through */ }
+  // Fallback: adapter whose subnet contains the default gateway.
   try {
     const { exec } = await import("child_process");
     const gw = await new Promise<string>((resolve) => {
@@ -100,31 +157,36 @@ async function lanAddress(): Promise<string> {
       for (const list of Object.values(os.networkInterfaces())) {
         for (const net of list || []) {
           if (net.family === "IPv4" && !net.internal && net.address.startsWith(gwParts + ".")) {
-            cachedLanIp = net.address;
-            return cachedLanIp;
+            return net.address;
           }
         }
       }
     }
   } catch { /* fall through */ }
-  // Fallback: first non-internal IPv4 that isn't a common virtual range.
+  // Last resort: first non-internal IPv4.
   for (const list of Object.values(os.networkInterfaces())) {
     for (const net of list || []) {
       if (net.family === "IPv4" && !net.internal && !/^169\.254\./.test(net.address)) {
-        cachedLanIp = net.address;
-        return cachedLanIp;
+        return net.address;
       }
     }
   }
   return "localhost";
 }
+async function lanAddress(): Promise<string> {
+  if (!cachedLanIp) {
+    cachedLanIp = await (lanProbe ||= probeLanAddress().finally(() => { lanProbe = null; }));
+  }
+  return cachedLanIp;
+}
 
 export async function getPairUrl(): Promise<string> {
   const ip = await lanAddress();
   const port = process.env.PORT || 3000;
-  // Prefer HTTPS once the local CA exists — it unlocks mic, push, geo and
-  // PWA install on the phone. HTTP stays as the fallback.
-  if (httpsReady()) return `https://${ip}:${HTTPS_PORT}/api/phone/link?t=${pairToken}`;
+  // Always hand out the plain-HTTP link for first contact: a phone that has
+  // never seen our local CA cannot open the HTTPS listener at all (cert
+  // error looks like "site unreachable"). The link page offers the CA
+  // download and upgrades itself to HTTPS afterwards.
   return `http://${ip}:${port}/api/phone/link?t=${pairToken}`;
 }
 
@@ -211,19 +273,26 @@ export const phonelinkRouter = express.Router();
 phonelinkRouter.get("/link", (_req, res) => res.send(LINK_PAGE));
 
 phonelinkRouter.get("/pair-info", async (_req, res) => {
+  const routedIp = await lanAddress();
   const candidates: string[] = [];
   for (const list of Object.values(os.networkInterfaces())) {
     for (const net of list || []) {
       if (net.family === "IPv4" && !net.internal && !/^169\.254\./.test(net.address)) candidates.push(net.address);
     }
   }
+  // The adapter the OS actually routes through goes first — that's the one a
+  // phone on the same Wi-Fi can reach. Virtual adapters trail behind.
+  candidates.sort((a, b) => (a === routedIp ? -1 : b === routedIp ? 1 : 0));
   const port = process.env.PORT || 3000;
-  const base = (ip: string) => httpsReady() ? `https://${ip}:${HTTPS_PORT}` : `http://${ip}:${port}`;
+  // Pairing entry is always plain HTTP (see getPairUrl): an untrusted CA
+  // makes the HTTPS variant look like "site unreachable" on first scan.
+  const base = (ip: string) => `http://${ip}:${port}`;
   res.json({
     pairUrl: await getPairUrl(),
     allUrls: candidates.map(ip => `${base(ip)}/api/phone/link?t=${pairToken}`),
     appUrl: candidates.length ? `${base(candidates[0])}/api/phone/app` : "/api/phone/app",
-    hint: "If the QR doesn't load, allow BELLA (Node.js) through Windows Firewall for Private networks, and make sure the phone is on the same Wi-Fi.",
+    apkUrl: candidates.length ? `${base(candidates[0])}/api/phone/app.apk` : "/api/phone/app.apk",
+    hint: "If the QR doesn't load, allow BELLA through Windows Firewall for Private networks, and make sure the phone is on the same Wi-Fi.",
     devices: loadDevices().map(d => ({ id: d.id, name: d.name, lastSeen: d.lastSeen })),
   });
 });
@@ -310,6 +379,42 @@ phonelinkRouter.get("/history", (req, res) => {
   res.json({ history: history.get(dev.id)?.slice(-30) || [] });
 });
 
+// --- native companion (APK) channel -----------------------------------------
+phonelinkRouter.get("/device-poll", (req, res) => {
+  const dev = authDevice(req);
+  if (!dev) return res.status(401).json({ error: "Unknown device." });
+  const list = deviceQueues.get(dev.id) || [];
+  const next = list.shift();
+  if (!next) return res.status(204).end();
+  // Drop anything stale that somehow accumulated behind it.
+  deviceQueues.set(dev.id, list.filter(c => Date.now() - Number(c.id.slice(1)) < 10 * 60 * 1000));
+  res.json(next);
+});
+
+phonelinkRouter.post("/device-result", express.json(), (req, res) => {
+  const dev = authDevice(req);
+  if (!dev) return res.status(401).json({ error: "Unknown device." });
+  const { id, result } = (req.body || {}) as { id?: string; result?: string };
+  if (!id) return res.status(400).json({ error: "Missing command id." });
+  const waiter = deviceWaiters.get(id);
+  if (waiter) waiter(String(result ?? "done"));
+  res.json({ ok: true });
+});
+
+/** Phone → BELLA events: notifications captured on the phone, shares. */
+phonelinkRouter.post("/device-event", express.json(), (req, res) => {
+  const dev = authDevice(req);
+  if (!dev) return res.status(401).json({ error: "Unknown device." });
+  const { kind, app, title, text } = (req.body || {}) as Record<string, string>;
+  if (kind === "notification") {
+    pushHistory(dev.id, `📱 ${app || "app"}: ${title || ""}${text ? ` — ${text}` : ""}`.slice(0, 300));
+  } else if (kind === "share") {
+    pushHistory(dev.id, `🔗 Shared from ${dev.name}: ${[title, text].filter(Boolean).join(" — ")}`.slice(0, 500));
+    emitNotify(dev.id, `Shared from phone: ${[title, text].filter(Boolean).join(" — ")}`);
+  }
+  res.json({ ok: true });
+});
+
 // ---------------------------------------------------------------------------
 // Tool module
 // ---------------------------------------------------------------------------
@@ -355,12 +460,26 @@ export const phonelinkModule: ToolModule = {
       description: "List phones currently paired with this BELLA session.",
       parameters: { type: Type.OBJECT, properties: {} },
     },
+    {
+      name: "controlPhone",
+      description: "Control the paired Android phone through the native BELLA companion app. Actions: openApp (open an installed app by name, e.g. 'whatsapp', 'instagram'), readNotifications (read recent notifications aloud), ring (make the phone ring loudly even on silent), locate (fresh GPS fix), battery. Use for 'open Instagram on my phone', 'read my phone notifications', 'ring my phone'.",
+      parameters: {
+        type: Type.OBJECT,
+        properties: {
+          action: { type: Type.STRING, description: "openApp | readNotifications | ring | locate | battery" },
+          query: { type: Type.STRING, description: "For openApp: the app name or package to launch." },
+          seconds: { type: Type.NUMBER, description: "For ring: how long to ring." },
+          device: { type: Type.STRING },
+        },
+        required: ["action"],
+      },
+    },
   ],
   async execute(name, args) {
     switch (name) {
       case "getPhonePairing": {
         return {
-          result: `Pairing link: ${await getPairUrl()} — show it as a QR code in Settings → Phone Link, scan it with the phone and give it a name.`,
+          result: `Pairing link: ${await getPairUrl()} — scanning it offers the BELLA Android app (.apk); after installing, tap Scan inside the app and point it at the same QR to connect.`,
           devices: loadDevices().map(d => d.name),
         };
       }
@@ -399,6 +518,19 @@ export const phonelinkModule: ToolModule = {
       case "listPairedPhones": {
         const devs = loadDevices();
         return { result: devs.length ? devs.map(d => `- ${d.name} (last seen ${new Date(d.lastSeen).toLocaleString()})`).join("\n") : "No phones paired yet." };
+      }
+      case "controlPhone": {
+        const dev = pickDevice(args.device ? String(args.device) : undefined);
+        if (!dev) throw new Error("No phone is paired yet. Pair it via Settings → Phone Link.");
+        const action = String(args.action);
+        const params: Record<string, unknown> = {};
+        if (args.query != null) params.query = String(args.query);
+        if (args.seconds != null) params.seconds = Number(args.seconds);
+        const result = await queueDeviceCommand(dev.id, action, params, 25000);
+        if (result == null) {
+          throw new Error(`${dev.name} didn't respond — is the BELLA app open on the phone (and notification access granted)?`);
+        }
+        return { result: `${dev.name}: ${result}` };
       }
     }
     throw new Error(`Unknown phonelink tool: ${name}`);

@@ -59,3 +59,9 @@ faces.json
 toasts.json
 
 desktop_agent/__pycache__/
+
+# Android companion build outputs & signing key
+android-app/build/
+public/phone/bella.apk
+public/phone/bella.apk.idsig
+scripts/bella-debug.keystore
