@@ -1,4 +1,4 @@
-"""
+﻿"""
 PC control: system volume and (gated) power actions.
 
 Volume:
@@ -220,49 +220,108 @@ def mute_toggle(args: Dict[str, Any]) -> Dict[str, Any]:
 # --- Media playback controls (YouTube, Spotify, Windows Media, Browser) ------
 
 
+_SMTC_PS1 = os.path.join(os.environ.get("TEMP", "."), "bella_smtc.ps1")
+
+
+def _smtc_action(action: str, app_filter: str | None = None) -> str | None:
+    """
+    Drive Windows System Media Transport Controls directly â€” per-app,
+    deterministic, zero focus games. Returns the app that handled it.
+
+    action: "next" | "prev" | "playpause" | "stop"
+    app_filter: optional substring to target a specific player ("spotify").
+    Priority: matching+Playing > any Playing > matching > any.
+    """
+    if platform.system() != "Windows":
+        return None
+    method = {
+        "next": "TrySkipNextAsync",
+        "prev": "TryPreviousAsync",
+        "playpause": "TryTogglePlayPauseAsync",
+        "stop": "TryStopAsync",
+    }.get(action)
+    if not method:
+        return None
+
+    ps = r"""
+param([string]$Action, [string]$AppFilter)
+Add-Type -AssemblyName System.Runtime.WindowsRuntime
+$null = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows.Media.Control, ContentType = WindowsRuntime]
+function Await-WinRt($op, $t) {
+  $asTask = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
+    $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and
+    $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' })[0]
+  $net = $asTask.MakeGenericMethod($t).Invoke($null, @($op))
+  $net.Wait(-1) | Out-Null
+  return $net.Result
+}
+$mgrType = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager]
+$mgr = Await-WinRt ($mgrType::RequestAsync()) $mgrType
+$sessions = @($mgr.GetSessions())
+if ($sessions.Count -eq 0) { Write-Output 'NONE'; exit }
+if ($AppFilter) { $sessions = @($sessions | Where-Object { $_.SourceAppUserModelId -like ('*' + $AppFilter + '*') }) }
+if ($sessions.Count -eq 0) { Write-Output 'NO-MATCH'; exit }
+# Prefer a playing session, else fall through to any remaining.
+$ordered = @($sessions | Where-Object { $_.GetPlaybackInfo().PlaybackStatus -eq 'Playing' }) + @($sessions)
+$methodMap = @{ next='TrySkipNextAsync'; prev='TryPreviousAsync'; playpause='TryTogglePlayPauseAsync'; stop='TryStopAsync' }
+$mName = $methodMap[$Action]
+foreach ($s in $ordered) {
+  try {
+    $r = Await-WinRt ($s.$mName()) ([System.Boolean])
+    if ($r) { Write-Output ("OK|" + $s.SourceAppUserModelId); exit }
+  } catch {}
+}
+Write-Output 'NONE'
+"""
+    try:
+        os.makedirs(os.path.dirname(_SMTC_PS1), exist_ok=True)
+        with open(_SMTC_PS1, "w", encoding="utf-8") as f:
+            f.write(ps)
+        args = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
+                "-File", _SMTC_PS1, "-Action", action]
+        if app_filter:
+            args += ["-AppFilter", app_filter]
+        out = subprocess.run(args, capture_output=True, text=True, timeout=12)
+        line = (out.stdout or "").strip().splitlines()
+        if line and line[-1].startswith("OK|"):
+            return line[-1][3:]
+        if line and line[-1] == "NO-MATCH":
+            # Requested app has no session; retry without filter.
+            return _smtc_action(action, None)
+    except Exception:
+        pass
+    return None
+
+
 def _send_youtube_shortcut(action: str) -> bool:
-    """If a YouTube or browser media window is open, send direct keyboard shortcuts."""
+    """
+    Send YouTube shortcuts ONLY when a YouTube tab's window is ALREADY in the
+    foreground. We never steal focus for media keys â€” blind hotkeys into a
+    wrong/foregrounded app caused skipped-and-typed chaos (Shift+N opens an
+    incognito window in Chromium browsers!).
+    """
     if platform.system() != "Windows":
         return False
     try:
         import win32gui
-        matches = []
-        browser_matches = []
+        import win32con
 
-        def enum_cb(hwnd, _):
-            if win32gui.IsWindowVisible(hwnd):
-                title = win32gui.GetWindowText(hwnd)
-                if title:
-                    tl = title.lower()
-                    if "youtube" in tl or "spotify" in tl:
-                        matches.append((hwnd, title))
-                    elif any(b in tl for b in ["chrome", "brave", "edge", "firefox", "opera"]):
-                        browser_matches.append((hwnd, title))
+        fg = win32gui.GetForegroundWindow()
+        fg_title = (win32gui.GetWindowText(fg) or "").lower()
+        if "youtube" not in fg_title and "spotify" not in fg_title:
+            return False  # not playing in the focused window â€” do nothing
+
+        try:
+            import pyautogui
+            if action == "next":
+                pyautogui.hotkey("shift", "n")
+            elif action == "prev":
+                pyautogui.hotkey("shift", "p")
+            elif action == "playpause":
+                pyautogui.press("k")
             return True
-
-        win32gui.EnumWindows(enum_cb, None)
-        target = (matches[0] if matches else (browser_matches[0] if browser_matches else None))
-        if target:
-            hwnd, title = target
-            try:
-                import win32con
-                win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
-                win32gui.SetForegroundWindow(hwnd)
-                time.sleep(0.06)
-            except Exception:
-                pass
-
-            try:
-                import pyautogui
-                if action == "next":
-                    pyautogui.hotkey("shift", "n")
-                elif action == "prev":
-                    pyautogui.hotkey("shift", "p")
-                elif action == "playpause":
-                    pyautogui.press("k")
-                return True
-            except Exception:
-                pass
+        except Exception:
+            pass
     except Exception:
         pass
     return False
@@ -297,10 +356,16 @@ def media_next_track(args: Dict[str, Any] = None) -> Dict[str, Any]:
         resolved = open_url(url)
         return {"result": f"Playing '{query}' on YouTube ({resolved})."}
 
-    # 1. Send global Windows hardware media key
+    # 1. Preferred: per-app SMTC command â€” works even when unfocused,
+    #    never steals focus, targets the right player automatically.
+    app = _smtc_action("next", (args or {}).get("app") or (args or {}).get("target"))
+    if app:
+        return {"result": f"Skipped to the next track ({app})."}
+
+    # 2. Global hardware media key (Windows routes it to the active player).
     _press_vk(VK_MEDIA_NEXT_TRACK)
 
-    # 2. Also send YouTube shortcut if a browser YouTube window is active
+    # 3. YouTube in-page shortcut, but only if a YouTube window is focused.
     yt_handled = _send_youtube_shortcut("next")
 
     if yt_handled:
@@ -312,6 +377,9 @@ def media_next_track(args: Dict[str, Any] = None) -> Dict[str, Any]:
 @register("previousSong")
 def media_prev_track(args: Dict[str, Any] = None) -> Dict[str, Any]:
     """Go back to the previous song or track."""
+    app = _smtc_action("prev", (args or {}).get("app") or (args or {}).get("target"))
+    if app:
+        return {"result": f"Went back to the previous track ({app})."}
     _press_vk(VK_MEDIA_PREV_TRACK)
     _send_youtube_shortcut("prev")
     return {"result": "Returned to the previous song/track."}
@@ -323,6 +391,9 @@ def media_prev_track(args: Dict[str, Any] = None) -> Dict[str, Any]:
 @register("resumeSong")
 def media_play_pause(args: Dict[str, Any] = None) -> Dict[str, Any]:
     """Toggle play / pause for the currently active song, music, or video playback."""
+    app = _smtc_action("playpause", (args or {}).get("app") or (args or {}).get("target"))
+    if app:
+        return {"result": f"Toggled play/pause ({app})."}
     _press_vk(VK_MEDIA_PLAY_PAUSE)
     _send_youtube_shortcut("playpause")
     return {"result": "Toggled play/pause for active song/video."}
@@ -331,6 +402,9 @@ def media_play_pause(args: Dict[str, Any] = None) -> Dict[str, Any]:
 @register("mediaStop")
 def media_stop(args: Dict[str, Any] = None) -> Dict[str, Any]:
     """Stop ongoing media playback."""
+    app = _smtc_action("stop", (args or {}).get("app") or (args or {}).get("target"))
+    if app:
+        return {"result": f"Playback stopped ({app})."}
     _press_vk(VK_MEDIA_STOP)
     return {"result": "Media playback stopped."}
 
@@ -521,3 +595,4 @@ __all__ = [
     "brightness_down",
     "set_brightness",
 ]
+

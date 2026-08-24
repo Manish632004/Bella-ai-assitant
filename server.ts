@@ -58,6 +58,12 @@ import {
   isGuestMode,
   markSpeaker,
   getLastSpeaker,
+  getOwnerReference,
+  getOwnerF0,
+  getOwnerF0Std,
+  analyzeF0,
+  pitchVerdict,
+  noteGuardianVerdict,
 } from "./bella/guardian";
 import { noteFrame, setFrameProvider, recorderState } from "./bella/creator";
 import { registerLiveSession, unregisterLiveSession, analyzeImage, getLiveSession, getLiveSessionCount } from "./bella/util";
@@ -1035,8 +1041,9 @@ async function executeNativeFallback(
       exec(`powershell -NoProfile -NonInteractive -Command "(New-Object -ComObject WScript.Shell).SendKeys('${keys.replace(/'/g, "''")}')"`, (err) => {
         if (err) console.warn(`[Native OS] SendKeys failed for '${keys}':`, err.message);
       });
+    // Media keys require the EXTENDEDKEY flag (0x1) or Windows ignores them.
     const vkKeyPs = (vk: number) =>
-      exec(`powershell -NoProfile -NonInteractive -Command "Add-Type -MemberDefinition '[DllImport(\\\"user32.dll\\\")] public static extern void keybd_event(byte b,byte s,uint f,int e);' -Name K -Namespace W; [W.K]::keybd_event(${vk},0,0,0); Start-Sleep -Milliseconds 60; [W.K]::keybd_event(${vk},0,2,0)"`, (err) => {
+      exec(`powershell -NoProfile -NonInteractive -Command "Add-Type -MemberDefinition '[DllImport(\\\"user32.dll\\\")] public static extern void keybd_event(byte b,byte s,uint f,int e);[DllImport(\\\"user32.dll\\\")] public static extern uint MapVirtualKey(uint c,uint t);' -Name K -Namespace W; $s=[W.K]::MapVirtualKey(${vk},0); [W.K]::keybd_event(${vk},$s,1,0); Start-Sleep -Milliseconds 60; [W.K]::keybd_event(${vk},$s,3,0)"`, (err) => {
         if (err) console.warn(`[Native OS] keybd_event failed for VK ${vk}:`, err.message);
       });
 
@@ -1095,10 +1102,13 @@ async function executeNativeFallback(
     if (tool === "previousTab") { sendKeysPs("^+{TAB}"); return { ok: true, result: { status: "success", result: "Switched to previous tab." } }; }
     if (tool === "browserBack") { sendKeysPs("%{LEFT}"); return { ok: true, result: { status: "success", result: "Navigated back." } }; }
     if (tool === "browserForward") { sendKeysPs("%{RIGHT}"); return { ok: true, result: { status: "success", result: "Navigated forward." } }; }
-    if (tool === "mediaNextTrack" || tool === "nextSong" || tool === "skipSong") { vkKeyPs(0xB6); return { ok: true, result: { status: "success", result: "Next track." } }; }
-    if (tool === "mediaPrevTrack" || tool === "previousSong") { vkKeyPs(0xB5); return { ok: true, result: { status: "success", result: "Previous track." } }; }
+    // VK_MEDIA_NEXT_TRACK=0xB0, PREV=0xB1, STOP=0xB2, PLAY_PAUSE=0xB3.
+    // (0xB4-0xB7 are LAUNCH_MAIL/MEDIA_SELECT/APP1/APP2 — those opened
+    // Explorer and mail instead of controlling music!)
+    if (tool === "mediaNextTrack" || tool === "nextSong" || tool === "skipSong") { vkKeyPs(0xB0); return { ok: true, result: { status: "success", result: "Next track." } }; }
+    if (tool === "mediaPrevTrack" || tool === "previousSong") { vkKeyPs(0xB1); return { ok: true, result: { status: "success", result: "Previous track." } }; }
     if (tool === "mediaPlayPause" || tool === "playPauseMedia" || tool === "playSong" || tool === "pauseSong" || tool === "resumeSong") { vkKeyPs(0xB3); return { ok: true, result: { status: "success", result: "Play/pause toggled." } }; }
-    if (tool === "mediaStop") { vkKeyPs(0xB4); return { ok: true, result: { status: "success", result: "Playback stopped." } }; }
+    if (tool === "mediaStop") { vkKeyPs(0xB2); return { ok: true, result: { status: "success", result: "Playback stopped." } }; }
 
     // ── Mouse fallbacks (user32 mouse_event / SetCursorPos) ──
     if (["leftClick", "rightClick", "doubleClick", "mouseDoubleClick", "mouseRightClick", "mouseScroll", "mouseMove"].includes(tool)) {
@@ -1271,6 +1281,10 @@ async function callDesktopAgent(
 async function startServer() {
   const app = express();
   const PORT = parseInt(process.env.PORT || "3000", 10) || 3000;
+
+  // Timestamp of the last live-audio frame pushed to the HUD speakers —
+  // used by /api/wake-check to reject clips of BELLA hearing herself.
+  let lastLiveAudioOut = 0;
   
   // 30mb so companion uploads (voice clips, photos) survive the global parser.
   app.use(express.json({ limit: "30mb" }));
@@ -1875,12 +1889,19 @@ $small.Save($ms, [System.Drawing.Imaging.ImageFormat]::Jpeg)
 
   // ---------------------------------------------------------------------------
   // Wake-Phrase AI Verification Endpoint (ultra-fast Gemini Flash audio check)
+  // Includes Voice Guardian speaker identification via clip comparison.
   // ---------------------------------------------------------------------------
   app.post("/api/wake-check", express.json({ limit: "5mb" }), async (req, res) => {
     try {
       const { audioBase64, phrase } = req.body;
       if (!audioBase64) {
         return res.json({ wake: false });
+      }
+
+      // Echo guard: if the live session just streamed model audio to the
+      // speakers, this clip is almost certainly BELLA hearing herself.
+      if (Date.now() - lastLiveAudioOut < 800) {
+        return res.json({ wake: false, speaker: "unknown", suppressed: true });
       }
 
       const apiKey = getGeminiApiKey();
@@ -1892,50 +1913,88 @@ $small.Save($ms, [System.Drawing.Imaging.ImageFormat]::Jpeg)
       const targetPhrase = (phrase || "hey bella").toLowerCase();
 
       let isWake = false;
+      let speaker: string = "unknown";
       const modelsToTry = ["gemini-3.5-flash", "gemini-3.7-flash", "gemini-3-flash-preview"];
 
+      const ownerRef = getOwnerReference();
+      const ownerF0 = getOwnerF0();
+      // When we have the owner's pitch but no reference clip, still verify by pitch.
       for (const modelName of modelsToTry) {
         try {
+          // Two-clip comparison only as a FALLBACK when pitch is unavailable.
+          const askText = (ownerRef && !ownerF0)
+            ? `Clip 1 is a short recording of someone speaking. Clip 2 is the REFERENCE VOICE of the computer's owner, recorded earlier.
+Answer STRICTLY as one line of JSON with no other text:
+{"wake":"YES" or "NO","voice":"OWNER" or "DIFFERENT" or "UNSURE"}
+- "wake": did clip 1 contain someone saying "${targetPhrase}", "Bella", "Hey Bella" or calling Bella? NO for silence/room noise/other speech.
+- "voice": is the main voice in clip 1 the SAME person as the reference voice in clip 2? OWNER if clearly the same person, DIFFERENT if it is someone else or a synthetic/speaker playback, UNSURE if too short or unclear.`
+            : `Listen to this short audio clip. Did the speaker say "${targetPhrase}", "Bella", "Hey Bella", "Wake up Bella", or call Bella directly?
+Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if it is silence, room noise, or talking about something else.`;
+
+          const parts: Array<Record<string, unknown>> = [
+            { inlineData: { mimeType: "audio/wav", data: audioBase64 } },
+          ];
+          if (ownerRef && !ownerF0) {
+            parts.push({ inlineData: { mimeType: "audio/wav", data: ownerRef } });
+          }
+          parts.push({ text: askText });
+
           const response = await ai.models.generateContent({
             model: modelName,
-            contents: [
-              {
-                role: "user",
-                parts: [
-                  {
-                    inlineData: {
-                      mimeType: "audio/wav",
-                      data: audioBase64
-                    }
-                  },
-                  {
-                    text: `Listen to this short audio clip. Did the speaker say "${targetPhrase}", "Bella", "Hey Bella", "Wake up Bella", or call Bella directly?
-Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if it is silence, room noise, or talking about something else.`
-                  }
-                ]
-              }
-            ]
+            contents: [{ role: "user", parts }],
           });
 
-          const reply = (response.text || "").trim().toUpperCase();
-          isWake = reply.includes("YES");
-          console.log(`[Wake-Check API (${modelName})] Speech clip analyzed. Model reply: "${reply}". Wake: ${isWake}`);
-          break; // Succeeded
+          const reply = (response.text || "").trim();
+          console.log(`[Wake-Check API (${modelName})] reply: "${reply.slice(0, 120)}"`);
+
+          if (ownerRef && !ownerF0) {
+            const jsonMatch = reply.match(/\{[^}]*\}/s);
+            if (jsonMatch) {
+              try {
+                const parsed = JSON.parse(jsonMatch[0].replace(/'/g, '"'));
+                isWake = String(parsed.wake || "").toUpperCase().includes("YES");
+                const v = String(parsed.voice || "").toUpperCase();
+                if (isWake) {
+                  speaker = noteGuardianVerdict(
+                    v.startsWith("OWNER") ? "owner" : v.startsWith("DIFFERENT") ? "guest" : "unsure",
+                  );
+                }
+                break;
+              } catch {
+                /* fall through to plain-text handling */
+              }
+            }
+            isWake = reply.toUpperCase().includes("YES");
+            break;
+          } else {
+            isWake = reply.toUpperCase().includes("YES");
+            break;
+          }
         } catch (modelErr: any) {
           console.warn(`[Wake-Check API] Model ${modelName} failed (${modelErr.message}), trying next...`);
         }
       }
 
-      // Voice Guardian: identify WHO spoke (owner vs guest) when enrolled.
-      let speaker: string = "unknown";
-      try {
-        const identification = identifySpeaker(audioBase64);
-        speaker = identification.identity;
-        if (speaker !== "unknown") {
-          console.log(`[Voice Guardian] Speaker identified as ${speaker} (score ${identification.score}).`);
+      // Voice Guardian speaker decision — pitch first (reliable), local
+      // spectral prints as last resort. Only matters when it WAS a wake.
+      if (isWake) {
+        try {
+          if (ownerF0) {
+            const probe = analyzeF0(audioBase64);
+            const pv = pitchVerdict(probe, ownerF0, getOwnerF0Std() ?? 8);
+            if (pv && probe) {
+              console.log(`[Voice Guardian] pitch probe=${probe.mean.toFixed(0)}Hz vs owner=${ownerF0}Hz → ${pv}`);
+              speaker = noteGuardianVerdict(pv);
+            } else {
+              console.log("[Voice Guardian] probe pitch unavailable — leaving speaker unknown.");
+            }
+          } else if (!ownerRef || !ownerF0) {
+            const local = identifySpeaker(audioBase64);
+            speaker = local.identity;
+          }
+        } catch (e) {
+          console.warn("[Voice Guardian] identification failed:", e);
         }
-      } catch (e) {
-        console.warn("[Voice Guardian] identification failed:", e);
       }
 
       res.json({ wake: isWake, speaker });
@@ -3607,6 +3666,7 @@ Reply ONLY with "YES" if they said the wake phrase or called Bella, or "NO" if i
             if (Array.isArray(modelParts)) {
               for (const part of modelParts) {
                 if (part.inlineData?.data) {
+                  lastLiveAudioOut = Date.now();
                   clientWs.send(JSON.stringify({ type: "audio", audio: part.inlineData.data }));
                 }
                 if (part.text) {

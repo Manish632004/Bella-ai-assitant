@@ -488,6 +488,10 @@ export class BellaAudioSession {
       source.start(this.nextStartTime);
       this.nextStartTime += buffer.duration;
 
+      // Mark the speaker as hot so the standby wake-word detector never
+      // mistakes BELLA's own voice for a user (echo/self-hearing guard).
+      (globalThis as any).__bellaAudioUntil = Date.now() + Math.ceil((this.nextStartTime - currentTime) * 1000) + 600;
+
       // Keep reference to handle real-time interruptions
       source.onended = () => {
         const index = this.activeSources.indexOf(source);

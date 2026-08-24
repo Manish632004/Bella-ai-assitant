@@ -830,11 +830,13 @@ export default function App() {
   // "auto"   = entered sleep automatically after 60s inactivity (waiting for wake word)
   // "manual" = manually deactivated by user (wake word muted, requires manual click to activate)
   const [sleepReason, setSleepReason] = useState<"manual" | "auto" | "none">("manual");
+  const sleepReasonRef = useRef<"manual" | "auto" | "none">("manual");
 
   // V2: Wake word detector instance (Web Speech API + Web Audio VAD, lives for the app lifetime)
   const wakeDetectorRef = useRef<BellaWakeWordDetector | null>(null);
   // Ref indirection so the wake-word callback always calls the latest wake/connect handler
   const connectHandlerRef = useRef<() => void>(() => {});
+  const wakeArmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 60-Second Auto-Sleep Inactivity Timer
   const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -908,21 +910,35 @@ export default function App() {
   useEffect(() => {
     const det = wakeDetectorRef.current;
     if (!det) return;
+    sleepReasonRef.current = sleepReason;
     if (settings.wakeWordEnabled && state === "disconnected" && sleepReason === "auto") {
       console.log(`[Wake Word] Auto-sleep standby active. Listening for "${settings.wakePhrase}" to auto-wake...`);
-      det.start({
-        phrase: settings.wakePhrase,
-        sensitivity: settings.sensitivity,
-        onTriggered: () => {
-          console.log("[Wake Word] Wake phrase detected! Auto-waking Bella from standby.");
-          setSleepReason("none");
-          det.stop();
-          connectHandlerRef.current();
-        },
-      });
+      // Arm on a short delay so the tail of BELLA's last spoken sentence
+      // (still ringing out of the speakers) can never trigger a false wake.
+      const armTimer = setTimeout(() => {
+        if (stateRef.current !== "disconnected" || sleepReasonRef.current !== "auto") return;
+        det.start({
+          phrase: settings.wakePhrase,
+          sensitivity: settings.sensitivity,
+          onTriggered: () => {
+            console.log("[Wake Word] Wake phrase detected! Auto-waking Bella from standby.");
+            setSleepReason("none");
+            det.stop();
+            connectHandlerRef.current();
+          },
+        });
+      }, 1200);
+      wakeArmTimerRef.current = armTimer;
     } else {
       det.stop();
     }
+    return () => {
+      if (wakeArmTimerRef.current) {
+        clearTimeout(wakeArmTimerRef.current);
+        wakeArmTimerRef.current = null;
+      }
+      det.stop();
+    };
   }, [settings.wakeWordEnabled, settings.wakePhrase, settings.sensitivity, state, sleepReason]);
 
   // BELLA 6.0 — Phone Link: let the paired Android wake Bella from across the

@@ -225,8 +225,11 @@ export class BellaWakeWordDetector {
           this.voiceEnergyFrames++;
           // When vocal energy is heard for ~2 chunks (>200ms) and buffer has sufficient audio
           if (this.voiceEnergyFrames >= 2 && !this.isVerifying && this.audioBuffer.length >= 6) {
-            this.voiceEnergyFrames = 0;
-            this.verifyCapturedSpeech();
+            // Ignore BELLA's own voice playing through the speakers.
+            if (Date.now() >= ((globalThis as any).__bellaAudioUntil || 0)) {
+              this.voiceEnergyFrames = 0;
+              this.verifyCapturedSpeech();
+            }
           }
         } else {
           this.voiceEnergyFrames = Math.max(0, this.voiceEnergyFrames - 1);
@@ -241,6 +244,9 @@ export class BellaWakeWordDetector {
 
   private async verifyCapturedSpeech(): Promise<void> {
     if (!this.intended || this.isVerifying || this.audioBuffer.length === 0) return;
+    // BELLA is (or just was) speaking out loud — this capture is her own
+    // voice bleeding through the speakers, not the user. Drop it.
+    if (Date.now() < ((globalThis as any).__bellaAudioUntil || 0)) return;
     this.isVerifying = true;
 
     try {
